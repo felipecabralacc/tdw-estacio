@@ -1,0 +1,94 @@
+FUNCTION PRO_OBTEM_VERBA_RH(PI_COD_TIPO_CURSO    IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_CURSO%TYPE
+                             ,PI_COD_CAMPUS        IN SIA.A_INTERFACE_PAGAMENTO.COD_CAMPUS%TYPE
+                             ,PI_COD_CURSO         IN NUMBER
+                             ,PI_COD_TURNO         IN SIA.A_INTERFACE_PAGAMENTO.COD_TURNO%TYPE
+                             ,PI_IND_TIPO_CONTRATO IN SIA.A_INTERFACE_PAGAMENTO.IND_TIPO_CONTRATO%TYPE
+                             ,PI_COD_TIPO_RUBRICA  IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_RUBRICA%TYPE
+                             ,PI_COD_INSTITUICAO   IN SIA.INSTITUICAO_ENSINO.COD_INSTITUICAO%TYPE) RETURN VARCHAR2 IS
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    V_COD_VERBA_RH VARCHAR2(20);
+    --
+  BEGIN
+    --
+    V_COD_VERBA_RH := NULL;
+    --
+    -- OBTÉM O COD_INSTITUICAO ATRAVÉS DOS CAMPUS
+/*    BEGIN
+      SELECT COD_INSTITUICAO
+        INTO V_COD_INSTITUICAO
+        FROM SIA.CAMPUS
+       WHERE COD_CAMPUS = PI_COD_CAMPUS;
+    EXCEPTION
+      WHEN OTHERS THEN
+        V_COD_INSTITUICAO := NULL;
+    END;
+*/    --
+    -- VALIDAÇÃO E CRÍTICA DOS PARÂMETROS DE ENTRADA.
+    --
+    BEGIN
+      --
+      SELECT COD_VERBA_RH
+        INTO V_COD_VERBA_RH
+        FROM SIA.EXCECAO_PAGTO_PROFESSOR
+       WHERE COD_TIPO_CURSO = PI_COD_TIPO_CURSO
+         AND COD_CAMPUS = PI_COD_CAMPUS
+         AND COD_CURSO = PI_COD_CURSO
+         AND COD_TURNO = PI_COD_TURNO
+         AND IND_TIPO_CONTRATO = PI_IND_TIPO_CONTRATO
+         AND COD_TIPO_RUBRICA = PI_COD_TIPO_RUBRICA
+         AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+      --
+    EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+        BEGIN
+          --
+          SELECT COD_VERBA_RH
+            INTO V_COD_VERBA_RH
+            FROM SIA.REGRA_PAGTO_PROFESSOR
+           WHERE COD_TIPO_CURSO = PI_COD_TIPO_CURSO
+             AND COD_CAMPUS = PI_COD_CAMPUS
+             AND IND_TIPO_CONTRATO = PI_IND_TIPO_CONTRATO
+             AND COD_TIPO_RUBRICA = PI_COD_TIPO_RUBRICA
+             AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            BEGIN
+              --
+              SELECT CASE PI_IND_TIPO_CONTRATO
+                       WHEN 'F' THEN
+                        COD_VERBA_RH
+                       WHEN 'S' THEN
+                        COD_VERBA_PRESTADOR
+                       ELSE
+                        COD_VERBA_PESSOA_JURIDICA
+                     END
+                INTO V_COD_VERBA_RH
+                FROM SIA.RUBRICA_INTERFACE
+               WHERE COD_TIPO_RUBRICA = PI_COD_TIPO_RUBRICA;
+              --
+            EXCEPTION
+              WHEN NO_DATA_FOUND THEN
+                RETURN NULL;
+              WHEN OTHERS THEN
+                RETURN NULL;
+            END;
+            --
+          WHEN OTHERS THEN
+            RETURN NULL;
+        END;
+        --
+      WHEN OTHERS THEN
+        RETURN NULL;
+    END;
+    --
+    RETURN V_COD_VERBA_RH;
+    --
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN NULL;
+  END PRO_OBTEM_VERBA_RH;

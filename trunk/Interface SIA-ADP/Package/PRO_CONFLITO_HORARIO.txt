@@ -1,0 +1,29 @@
+FUNCTION PRO_CONFLITO_HORARIO(PI_HH_INI_1         IN DATE
+                             ,PI_HH_FIM_1         IN DATE
+                             ,PI_HH_INI_2         IN DATE
+                             ,PI_HH_FIM_2         IN DATE
+                             ) RETURN BOOLEAN
+IS
+   V_HH_INI_1      DATE;
+   V_HH_FIM_1      DATE;
+   V_HH_INI_2      DATE;
+   V_HH_FIM_2      DATE;
+
+BEGIN
+
+   V_HH_INI_1  := TO_DATE(TO_CHAR(PI_HH_INI_1,'HH24:MI'),'HH24:MI');
+   V_HH_FIM_1  := TO_DATE(TO_CHAR(PI_HH_FIM_1,'HH24:MI'),'HH24:MI');
+   V_HH_INI_2  := TO_DATE(TO_CHAR(PI_HH_INI_2,'HH24:MI'),'HH24:MI');
+   V_HH_FIM_2  := TO_DATE(TO_CHAR(PI_HH_FIM_2,'HH24:MI'),'HH24:MI');
+
+   IF ( (V_HH_FIM_1 > V_HH_INI_2) AND (V_HH_FIM_1 <= V_HH_FIM_2) ) THEN
+      RETURN (TRUE);
+   END IF;
+
+   IF ( (V_HH_INI_1 >= V_HH_INI_2) AND (V_HH_INI_1 < V_HH_FIM_2) ) THEN
+      RETURN(TRUE);
+   END IF;
+
+   RETURN(FALSE);
+
+END PRO_CONFLITO_HORARIO;

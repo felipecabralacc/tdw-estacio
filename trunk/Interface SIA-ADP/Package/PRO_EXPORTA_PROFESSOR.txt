@@ -1,0 +1,418 @@
+  PROCEDURE PRO_EXPORTA_PROFESSOR(PI_DT_COMPETENCIA    IN DATE
+                                 ,PI_DT_ALT_CAD_INI    IN DATE
+                                 ,PI_DT_ALT_CAD_FIM    IN DATE
+                                 ,PI_IND_TIPO_CONTRATO IN VARCHAR2
+                                 ,PI_COMMIT            IN VARCHAR2
+                                 ,PO_QTDE_PROF_GERADOS OUT INTEGER
+                                 ,PO_IND_ERRO          OUT VARCHAR2
+                                 ,PO_MSG_RETORNO       OUT VARCHAR2
+                                 ,PI_COD_INSTITUICAO   IN NUMBER) IS
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    --
+    V_SQL         VARCHAR2(7000);
+    V_ERRO_ORACLE VARCHAR2(5000);
+    --V_IND_ERRO                  VARCHAR2(1);
+    --V_MSG_RETORNO               VARCHAR2(5000);
+    V_TXT_PARAMETROS     VARCHAR2(5000);
+    V_POSICAO            NUMBER(03);
+    V_LINHA              VARCHAR2(5000);
+    V_NOME_ARQ           VARCHAR2(50);
+    V_ARQ_RETORNO        SYS.UTL_FILE.FILE_TYPE;
+    V_NUMERO_LINHA       PLS_INTEGER;
+    V_CAMINHO_DESTINO_OK INTERFACE_ARQUIVO.CAMINHO_DESTINO_OK%TYPE;
+    V_EXT_ARQ            INTERFACE_ARQUIVO.EXTENSAO_ARQUIVO%TYPE;
+    --      V_DT_COMPETENCIA            DATE;
+    V_ACHOU              PLS_INTEGER;
+
+    V_COD_EMPRESA_RH     VARCHAR2(2);
+    /*RAPHAEL BARRENECHEA - PEOPLEWARE - SRD 379 - 21/09/2010 - INÍCIO*/
+    vCMP21               BINARY_INTEGER;
+    vCMP22               VARCHAR2(4);
+    /*RAPHAEL BARRENECHEA - PEOPLEWARE - SRD 379 - 21/09/2010 - FIM*/
+
+    --
+    --
+    TYPE RECORD_PROFESSOR IS RECORD(
+       AGENCIA              SIA.DADOS_PROFESSOR.COD_AGENCIA%TYPE
+      ,BAIRRO               SIA.BAIRRO.NOM_BAIRRO%TYPE
+      ,BANCO                SIA.DADOS_PROFESSOR.COD_BANCO%TYPE
+      ,PAGTO_VIA_DOC        VARCHAR2(3)
+      ,CEP                  SIA.DADOS_PROFESSOR.CEP_PROFESSOR%TYPE
+      ,COMPLEMENTO          SIA.DADOS_PROFESSOR.NUM_COMPLEMENTO_ENDERECO%TYPE
+      ,CONTA                SIA.DADOS_PROFESSOR.COD_CONTA_CORRENTE%TYPE
+      ,CPF                  VARCHAR2(11)
+      ,AGENCIA_DV           SIA.DADOS_PROFESSOR.COD_AGENCIA_DV%TYPE
+      ,DIGITO_CONTA         SIA.DADOS_PROFESSOR.COD_CONTA_CORRENTE_DV%TYPE
+      ,DOMICILIADO_EXTERIOR VARCHAR2(3)
+      ,ENDERECO             SIA.DADOS_PROFESSOR.ENDERECO_PROFESSOR%TYPE
+      ,FORMA_PAGAMENTO      VARCHAR2(3)
+      ,FUNCAO               SIA.PROFESSOR.COD_CARGO_RH%TYPE
+      ,MUNICIPIO            SIA.DADOS_PROFESSOR.COD_MUNICIPIO_FOPAG%TYPE
+      ,NOME                 SIA.DADOS_PROFESSOR.NOM_PROFESSOR%TYPE
+      ,NUMERO               SIA.DADOS_PROFESSOR.NUM_ENDERECO%TYPE
+      ,PREVIDENCIA_SOCIAL   SIA.DADOS_PROFESSOR.COD_PIS_PASEP_CI%TYPE
+      ,PAGAMENTO_BANCO      VARCHAR2(3)
+      ,TIPO                 VARCHAR2(6));
+    --
+    R_PROF RECORD_PROFESSOR;
+    --
+    TYPE C_PROFESSOR_TYPE IS REF CURSOR;
+    CURSOR_PROF C_PROFESSOR_TYPE;
+    --
+    PROCEDURE INCLUI_LINHA(P_LINHA_IN IN VARCHAR2) IS
+    BEGIN
+      --
+      V_NUMERO_LINHA := V_NUMERO_LINHA + 1;
+      SYS.UTL_FILE.PUT_LINE(V_ARQ_RETORNO, P_LINHA_IN);
+      PO_QTDE_PROF_GERADOS := PO_QTDE_PROF_GERADOS + 1;
+      --
+    EXCEPTION
+      WHEN SYS.UTL_FILE.INVALID_OPERATION THEN
+        --
+        PO_MSG_RETORNO := 'NÃO FOI POSSÍVEL LER O REGISTRO (' || V_NUMERO_LINHA || ') DO ARQUIVO DE RETORNO (' || V_NOME_ARQ || ').';
+        RAISE ERR_PREVISTO;
+        --
+      WHEN SYS.UTL_FILE.INVALID_FILEHANDLE THEN
+        --
+        PO_MSG_RETORNO := 'NÃO FOI POSSÍVEL CARREGAR O REGISTRO (' || V_NUMERO_LINHA || ') DO ARQUIVO DE RETORNO (' || V_NOME_ARQ || ').';
+        RAISE ERR_PREVISTO;
+        --
+      WHEN SYS.UTL_FILE.WRITE_ERROR THEN
+        --
+        PO_MSG_RETORNO := 'ERRO NA OPERAÇÃO DE GRAVAÇÃO DO REGISTRO (' || V_NUMERO_LINHA || ') DO ARQUIVO DE RETORNO (' || V_NOME_ARQ || ').';
+        RAISE ERR_PREVISTO;
+        --
+    END INCLUI_LINHA;
+    --
+    FUNCTION RETIRA_CARACTER_ESPECIAL(P_STRING IN VARCHAR2) RETURN VARCHAR2 IS
+      --
+      V_STRING VARCHAR2(70);
+      --
+    BEGIN
+      --
+      V_STRING := UPPER(P_STRING);
+      V_STRING := REPLACE(V_STRING, 'Á', 'A');
+      V_STRING := REPLACE(V_STRING, 'À', 'A');
+      V_STRING := REPLACE(V_STRING, 'Â', 'A');
+      V_STRING := REPLACE(V_STRING, 'Ã', 'A');
+      V_STRING := REPLACE(V_STRING, 'É', 'E');
+      V_STRING := REPLACE(V_STRING, 'È', 'E');
+      V_STRING := REPLACE(V_STRING, 'Ê', 'E');
+      V_STRING := REPLACE(V_STRING, 'Ë', 'E');
+      V_STRING := REPLACE(V_STRING, 'Í', 'I');
+      V_STRING := REPLACE(V_STRING, 'Ì', 'I');
+      V_STRING := REPLACE(V_STRING, 'Î', 'I');
+      V_STRING := REPLACE(V_STRING, 'Ï', 'I');
+      V_STRING := REPLACE(V_STRING, 'Ó', 'O');
+      V_STRING := REPLACE(V_STRING, 'Ò', 'O');
+      V_STRING := REPLACE(V_STRING, 'Ô', 'O');
+      V_STRING := REPLACE(V_STRING, 'Ö', 'O');
+      V_STRING := REPLACE(V_STRING, 'Õ', 'O');
+      V_STRING := REPLACE(V_STRING, 'Ú', 'U');
+      V_STRING := REPLACE(V_STRING, 'Ù', 'U');
+      V_STRING := REPLACE(V_STRING, 'Û', 'U');
+      V_STRING := REPLACE(V_STRING, 'Ü', 'U');
+      V_STRING := REPLACE(V_STRING, 'Ç', 'C');
+      V_STRING := REPLACE(V_STRING, '*', ' ');
+      V_STRING := REPLACE(V_STRING, '/', ' ');
+      V_STRING := REPLACE(V_STRING, '\', ' ');
+      V_STRING := REPLACE(V_STRING, '(', ' ');
+      V_STRING := REPLACE(V_STRING, ')', ' ');
+      V_STRING := REPLACE(V_STRING, '!', ' ');
+      V_STRING := REPLACE(V_STRING, '.', ' ');
+      V_STRING := REPLACE(V_STRING, ',', ' ');
+      V_STRING := REPLACE(V_STRING, ':', ' ');
+      V_STRING := REPLACE(V_STRING, '-', ' ');
+      V_STRING := REPLACE(V_STRING, '  ', ' ');
+      RETURN V_STRING;
+      --
+    END RETIRA_CARACTER_ESPECIAL;
+    --
+    --
+    --
+  BEGIN
+    PO_QTDE_PROF_GERADOS := 0;
+    -- QUERY PARA O CURSOR
+
+    V_SQL := '
+      SELECT DP.COD_AGENCIA AGENCIA
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL2(DP.CEP_PROFESSOR, B.NOM_BAIRRO, ''BARRA DA TIJUCA'')
+               ELSE
+                NVL2(DP.CEP_PROFESSOR_COM, B.NOM_BAIRRO, ''BARRA DA TIJUCA'')
+              END) BAIRRO
+            ,DP.COD_BANCO BANCO
+            ,(CASE
+               WHEN DP.COD_BANCO <> 409 THEN
+                ''409''
+               ELSE
+                NULL
+              END) PAGTO_VIA_DOC
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL(DP.CEP_PROFESSOR, ''22775003'')
+               ELSE
+                NVL(DP.CEP_PROFESSOR_COM, ''22775003'')
+              END) CEP
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL2(DP.CEP_PROFESSOR, DP.NUM_COMPLEMENTO_ENDERECO, ''PARTE'')
+               ELSE
+                NVL2(DP.CEP_PROFESSOR_COM, DP.NUM_COMPLEMENTO_COMERCIAL, ''PARTE'')
+              END) COMPLEMENTO
+            ,DP.COD_CONTA_CORRENTE CONTA
+            ,LPAD(DP.CPF_PROFESSOR, 11, 0) CPF
+            ,DP.COD_AGENCIA_DV AGENCIA_DV
+            ,DP.COD_CONTA_CORRENTE_DV DIGITO_CONTA
+            ,''NO'' DOMICILIADO_EXTERIOR
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL2(DP.CEP_PROFESSOR, DP.ENDERECO_PROFESSOR, ''AV AYRTON SENNA'')
+               ELSE
+                NVL2(DP.CEP_PROFESSOR_COM, DP.ENDERECO_PROFESSOR_COM, ''AV AYRTON SENNA'')
+              END) ENDERECO
+            ,''YES'' FORMA_PAGAMENTO
+            ,P.COD_CARGO_RH FUNCAO
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL2(DP.CEP_PROFESSOR, DP.COD_MUNICIPIO_FOPAG, ''3304557'')
+               ELSE
+                NVL2(DP.CEP_PROFESSOR_COM, DP.COD_MUNICIPIO_FOPAG, ''3304557'')
+              END) MUNICIPIO
+            ,DP.NOM_PROFESSOR NOME
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL2(DP.CEP_PROFESSOR, DP.NUM_ENDERECO, ''2800'')
+               ELSE
+                NVL2(DP.CEP_PROFESSOR_COM, DP.NUM_ENDERECO_COMERCIAL, ''2800'')
+              END) NUMERO
+            ,DP.COD_PIS_PASEP_CI PREVIDENCIA_SOCIAL
+            ,''YES'' PAGAMENTO_BANCO
+            ,''U_PROF'' TIPO
+        FROM SIA.PROFESSOR       P
+            ,SIA.DADOS_PROFESSOR DP
+            ,SIA.BAIRRO          B
+       WHERE DP.NUM_SEQ_DADOS_PROFESSOR = P.NUM_SEQ_DADOS_PROFESSOR
+         AND NVL(DP.COD_BAIRRO, DP.COD_BAIRRO_COM) = B.COD_BAIRRO(+)
+         AND NVL(DP.COD_MUNICIPIO, DP.COD_MUNICIPIO_COM) = B.COD_MUNICIPIO(+)
+         AND (:PI_IND_TIPO_CONTRATO IS NULL OR P.IND_TIPO_CONTRATO = :PI_IND_TIPO_CONTRATO)
+    ';
+
+    -- BUSCA POR COMPETENCIA
+    IF PI_DT_COMPETENCIA IS NOT NULL
+    THEN
+      --
+      V_SQL := V_SQL || '
+         AND EXISTS(SELECT 1
+                      FROM SIA.INTERFACE_PAGAMENTO IP,
+                           SIA.CONTROLE_PAGAMENTO_PROFESSOR CP
+                     WHERE IP.COD_PROFESSOR = P.COD_PROFESSOR
+                       AND IP.DT_MES_ANO_COMPETENCIA = :PI_DT_COMPETENCIA
+                       AND IP.CICLO = CP.CICLO
+                       AND IP.DT_MES_ANO_COMPETENCIA = CP.DT_MES_ANO_COMPETENCIA
+                       AND IP.NOM_PROCESSO = CP.NOM_PROCESSO
+                       AND IP.COD_INSTITUICAO = CP.COD_INSTITUICAO
+                       AND CP.DT_EXPORTACAO_OK IS NOT NULL
+                       AND CP.COD_INSTITUICAO = :PI_COD_INSTITUICAO)';
+      --
+    ELSE
+      -- OU POR DATA DE ALTERACAO CADASTRAL ENTRE A DATA INFORMADA
+      --
+      V_SQL := V_SQL || '
+        AND TRUNC(P.DT_ATUALIZA_LOG) BETWEEN :PI_DT_ALT_CAD_INI AND :PI_DT_ALT_CAD_FIM
+        AND EXISTS(SELECT 1
+                     FROM SIA.PROFESSOR_REGIAO PR
+                     JOIN SIA.REGIAO R ON PR.COD_REGIAO = R.COD_REGIAO
+                     JOIN SIA.CAMPUS CA ON R.COD_REGIAO = CA.COD_CAMPUS
+                    WHERE PR.COD_PROFESSOR = P.COD_PROFESSOR
+                      AND CA.COD_INSTITUICAO = :PI_COD_INSTITUICAO)
+      ';
+      --
+    END IF;
+
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        PO_IND_ERRO    := '0';
+        PO_MSG_RETORNO := '';
+        --
+        IF PI_DT_COMPETENCIA IS NOT NULL
+        THEN
+          V_TXT_PARAMETROS := 'PI_DT_COMPETENCIA: ' || TO_CHAR(PI_DT_COMPETENCIA, 'DD/MM/YYYY');
+        ELSE
+          V_TXT_PARAMETROS := 'PI_DT_ALT_CAD_INI: ' || TO_CHAR(PI_DT_ALT_CAD_INI, 'DD/MM/YYYY') || ' AND PI_DT_ALT_CAD_FIM: ' || TO_CHAR(PI_DT_ALT_CAD_FIM, 'DD/MM/YYYY');
+        END IF;
+        --
+        V_POSICAO := 15;
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_EXPORTA_PROFESSOR';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            PO_MSG_RETORNO := 'O PROCESSO EXPORTA_PROFESSOR DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        V_POSICAO := 20;
+        --
+        IF PI_DT_COMPETENCIA IS NOT NULL
+        THEN
+          OPEN CURSOR_PROF FOR V_SQL
+            USING PI_IND_TIPO_CONTRATO, PI_IND_TIPO_CONTRATO, PI_DT_COMPETENCIA, PI_COD_INSTITUICAO;
+        ELSE
+          OPEN CURSOR_PROF FOR V_SQL
+            USING PI_IND_TIPO_CONTRATO, PI_IND_TIPO_CONTRATO, PI_DT_ALT_CAD_INI, PI_DT_ALT_CAD_FIM, PI_COD_INSTITUICAO;
+        END IF;
+        --
+        FETCH CURSOR_PROF
+          INTO R_PROF;
+        --
+        IF CURSOR_PROF%NOTFOUND
+        THEN
+          PO_MSG_RETORNO := 'NÃO FOI GERADO A INTERFACE DE PAGAMENTO PARA O PROCESSO EXPORTA_PROFESSOR.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        V_POSICAO := 25;
+        --
+        BEGIN
+          --
+          SELECT CAMINHO_DESTINO_OK
+                ,NOM_ARQUIVO
+                ,EXTENSAO_ARQUIVO
+            INTO V_CAMINHO_DESTINO_OK
+                ,V_NOME_ARQ
+                ,V_EXT_ARQ
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_EXPORTA_PROFESSOR';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            V_ERRO_ORACLE  := SQLERRM;
+            PO_MSG_RETORNO := 'NÃO FOI ENCONTRADO O REGISTRO EXPORTA_PROFESSOR EM INTERFACE_ARQUIVO.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        BEGIN
+          SELECT LPAD(MA.COD_EMPRESA_RH, 2, '0')
+            INTO V_COD_EMPRESA_RH
+            FROM SIA.INSTITUICAO_ENSINO IE
+                ,SCS.MANTENEDORA        MA
+           WHERE IE.SGL_MANTENEDORA = MA.SGL_MANTENEDORA
+             AND IE.COD_INSTITUICAO = PI_COD_INSTITUICAO;
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            PO_MSG_RETORNO := 'COD_EMPRESA_RH NÃO ENCONTRADO PARA A INSTITUIÇÃO INFORMADA.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- CRIA ARQUIVO
+        --
+        IF PI_DT_COMPETENCIA IS NOT NULL
+        THEN
+          /* AUTONOMO_EMPXX_MMYYYY.TXT */
+          V_NOME_ARQ := 'AUTONOMO_EMP' || V_COD_EMPRESA_RH || '_' || TO_CHAR(PI_DT_COMPETENCIA, 'MMYYYY') || '_' || PI_COD_INSTITUICAO || '.' || V_EXT_ARQ;
+        ELSE
+          V_NOME_ARQ := 'AUTONOMO_EMP' || V_COD_EMPRESA_RH || '_' || PI_COD_INSTITUICAO || '.' || V_EXT_ARQ;
+        END IF;
+        --
+        BEGIN
+          V_ARQ_RETORNO := SYS.UTL_FILE.FOPEN(V_CAMINHO_DESTINO_OK, V_NOME_ARQ, 'W');
+        EXCEPTION
+          WHEN SYS.UTL_FILE.INVALID_PATH THEN
+            PO_MSG_RETORNO := 'NÃO PODE CRIAR O ARQUIVO DE RETORNO: ' || V_NOME_ARQ || '. DIRETÓRIO ' || V_CAMINHO_DESTINO_OK || ' NÃO ENCONTRADO OU SEM PERMISSÃO.';
+            RAISE ERR_PREVISTO;
+          WHEN SYS.UTL_FILE.INVALID_OPERATION THEN
+            PO_MSG_RETORNO := 'ERRO NA CRIAÇÃO DO ARQUIVO (' || V_NOME_ARQ || ') NO DIRETÓRIO (' || V_CAMINHO_DESTINO_OK || '). CONFIRA O DIRETÓRIO !';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        V_POSICAO := 40;
+        --
+        WHILE CURSOR_PROF%FOUND
+        LOOP
+          --
+          V_POSICAO := 30;
+          --
+             vCMP22 := '0588';
+             IF R_PROF.BANCO = '409' THEN
+                vCMP21 := '5';
+             ELSE
+                vCMP21 := '8';
+             END IF;
+
+           V_LINHA := R_PROF.AGENCIA || ';' || R_PROF.BAIRRO || ';' || R_PROF.BANCO || ';' || R_PROF.PAGTO_VIA_DOC || ';' || R_PROF.CEP || ';' || R_PROF.COMPLEMENTO || ';' || R_PROF.CONTA || ';' || R_PROF.CPF || ';' || R_PROF.AGENCIA_DV || ';' || R_PROF.DIGITO_CONTA || ';' || R_PROF.DOMICILIADO_EXTERIOR || ';' ||
+                     R_PROF.ENDERECO || ';' || R_PROF.FORMA_PAGAMENTO || ';' || R_PROF.FUNCAO || ';' || R_PROF.MUNICIPIO || ';' || R_PROF.NOME || ';' || R_PROF.NUMERO || ';' || R_PROF.PREVIDENCIA_SOCIAL || ';' || R_PROF.PAGAMENTO_BANCO || ';' || R_PROF.TIPO || ';' || vCMP21 || ';' || vCMP22;
+
+
+          /* RAPHAEL BARRENECHEA - PEOPLEWARE - SRD 379 - 21/09/2010 - FIM */
+          --
+          V_POSICAO := 110;
+          INCLUI_LINHA(V_LINHA);
+          FETCH CURSOR_PROF
+            INTO R_PROF;
+          --
+        END LOOP; -- WHILE CURSOR_PROF%FOUND LOOP
+        --
+        V_POSICAO := 130;
+        SYS.UTL_FILE.FCLOSE(V_ARQ_RETORNO);
+        --
+        SIA.GRAVA_ARQUIVO_BANCO(V_CAMINHO_DESTINO_OK, V_NOME_ARQ, 'TXT', V_NOME_ARQ, 4, 'PRO1-2-39', PO_MSG_RETORNO, PO_IND_ERRO);
+        --
+        V_POSICAO := 300;
+        --
+        IF PI_COMMIT = 'S'
+        THEN
+          COMMIT;
+        END IF;
+        --
+      EXCEPTION
+        WHEN ERR_ADVERTENCIA THEN
+          PO_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          PO_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          PO_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          PO_MSG_RETORNO := SQLERRM || ' - ' || PI_IND_TIPO_CONTRATO || '-' || V_POSICAO || ' - ' || V_SQL || ' - ' || PI_DT_ALT_CAD_INI || ' - ' || PI_DT_ALT_CAD_FIM;
+          V_ERRO_ORACLE  := SQLERRM;
+          PO_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+      END;
+      --
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF PI_COMMIT = 'S'
+        THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF PO_IND_ERRO = '2'
+        THEN
+          --
+          SEG.SEG_LOG_EXECUCAO('PRO_EXPORTA_PROFESSOR, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+          --
+        END IF;
+        --
+    END;
+    --
+    IF CURSOR_PROF%ISOPEN
+    THEN
+      CLOSE CURSOR_PROF;
+    END IF;
+  END PRO_EXPORTA_PROFESSOR;
