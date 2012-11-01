@@ -1,0 +1,347 @@
+PROCEDURE PRO_CICLOS_EXPORT_RH(PI_DT_COMPETENCIA  IN DATE
+                                ,PI_TAB_CICLO       IN VARCHAR2
+                                ,PI_QTD_LINHAS      IN PLS_INTEGER
+                                ,PI_COMMIT          IN VARCHAR2
+                                ,PO_IND_ERRO        OUT VARCHAR2
+                                ,PO_MSG_RETORNO     OUT VARCHAR2
+                                ,PI_COD_INSTITUICAO IN NUMBER) IS
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    ERR_PREVISTO EXCEPTION;
+    V_SQLERRM        VARCHAR2(500);
+    V_TXT_PARAMETROS VARCHAR2(500);
+    V_POSICAO        PLS_INTEGER;
+    V_QTD_REG_LIDOS  PLS_INTEGER;
+    V_INDICE         PLS_INTEGER;
+    --
+    V_COD_VERBA_RH         VARCHAR2(30);
+    V_COD_CENTRO_RESULTADO VARCHAR2(15);
+    --V_COD_TIPO_CENTRO_RESULTADO VARCHAR2(1);
+    --
+    V_SEP_LIN CHAR(1) := ',';
+    V_SEP_COL CHAR(1) := '|';
+    --
+    M_TAB_CICLO        T_NUMBER := T_NUMBER();
+    M_TAB_NOM_PROCESSO T_VARCHAR := T_VARCHAR();
+    --
+  BEGIN
+    --
+    V_TXT_PARAMETROS := ' PI_DT_COMPETENCIA   : ' || TO_CHAR(PI_DT_COMPETENCIA, 'DD/MM/YYYY') || CHR(13) || ' PI_CICLO            : ' || PI_TAB_CICLO || CHR(13) || ' PI_QTD_LINHAS       : ' || PI_QTD_LINHAS;
+    --
+    V_QTD_REG_LIDOS := 0;
+    --
+    -- 1. VERIFICA PARAMETROS OBRIGATÓRIOS
+    --
+    V_POSICAO := 10;
+    --
+    IF PI_DT_COMPETENCIA IS NULL
+    THEN
+      PO_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+      RAISE ERR_PREVISTO;
+    END IF;
+    --
+    IF PI_TAB_CICLO IS NULL
+    THEN
+      PO_MSG_RETORNO := 'O CICLO DO PROCESSO DEVE SER INFORMADO.';
+      RAISE ERR_PREVISTO;
+    END IF;
+    --
+    IF PI_QTD_LINHAS IS NULL
+    THEN
+      PO_MSG_RETORNO := 'QUANTIDADE DE LINHAS DEVE SER INFORMADA.';
+      RAISE ERR_PREVISTO;
+    END IF;
+    --
+    IF PI_COD_INSTITUICAO IS NULL
+    THEN
+      PO_MSG_RETORNO := 'CÓDIGO DA INSTITUIÇÃO DEVE SER INFORMADA.';
+      RAISE ERR_PREVISTO;
+    END IF;
+    --
+    GERAR_TAB(PI_QTD_LINHAS, PI_TAB_CICLO || ',', M_TAB_CICLO, M_TAB_NOM_PROCESSO, V_SEP_LIN, V_SEP_COL);
+    --
+    V_POSICAO := 20;
+    --
+    -- 2. LIMPA A DATA DE LIBERAÇÃO PARA TODOS OS PROCESSOS DESTA COMPETÊNCIA.
+    --    O PROCESSO SEMPRE RECEBE PELO MENOS 1 CICLO DE CADA NOM_PROCESSO.
+    --
+    UPDATE SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+       SET DT_EXPORTACAO_OK = NULL
+     WHERE DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+       AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+    --
+    -- 2.5. LISTA TODOS OS REGISTROS SEM VERBA DO RH E CENTRO RESULTADO
+    --
+    V_POSICAO := 25;
+    --
+    FOR V_INDICE IN 1 .. M_TAB_CICLO.COUNT
+    LOOP
+      --
+      IF M_TAB_CICLO(V_INDICE) IS NOT NULL AND
+         M_TAB_NOM_PROCESSO(V_INDICE) IS NOT NULL
+      THEN
+        --
+        FOR R_IP IN (SELECT AIP.DT_MES_ANO_COMPETENCIA
+                           ,AIP.NUM_SEQ_MOVIMENTO
+                           ,AIP.COD_TIPO_RUBRICA
+                           ,AIP.COD_CURSO
+                           ,AIP.COD_CURSO_EXTENSAO
+                           ,AIP.COD_TURNO
+                           ,AIP.COD_CAMPUS
+                           ,AIP.COD_TIPO_CURSO
+                           ,AIP.CICLO
+                           ,AIP.NOM_PROCESSO
+                           ,AIP.IND_TIPO_CONTRATO
+                           ,AIP.COD_VERBA_RH
+                           ,AIP.COD_CENTRO_RESULTADO
+                           ,AIP.COD_TIPO_ATUACAO
+                           ,(SELECT TA.IND_CR_APOIO
+                               FROM SIA.TIPO_ATUACAO TA
+                              WHERE TA.COD_TIPO_ATUACAO = AIP.COD_TIPO_ATUACAO
+                                AND TA.IND_FIXO_VARIAVEL = 'F') IND_CR_APOIO
+                       FROM SIA.A_INTERFACE_PAGAMENTO AIP
+                           ,SIA.A_CONTROLE_PAGAMENTO_PROFESSOR CPP
+                      WHERE AIP.DT_MES_ANO_COMPETENCIA = CPP.DT_MES_ANO_COMPETENCIA
+                        AND AIP.NOM_PROCESSO = CPP.NOM_PROCESSO
+                        AND AIP.CICLO = CPP.CICLO
+                        AND AIP.COD_INSTITUICAO = CPP.COD_INSTITUICAO
+                        AND CPP.COD_INSTITUICAO = PI_COD_INSTITUICAO
+                        AND AIP.DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+                        AND AIP.CICLO = M_TAB_CICLO(V_INDICE)
+                        AND AIP.NOM_PROCESSO = M_TAB_NOM_PROCESSO(V_INDICE)
+                        AND (AIP.COD_VERBA_RH IS NULL OR AIP.COD_CENTRO_RESULTADO IS NULL))
+        LOOP
+          --
+          V_COD_VERBA_RH         := NULL;
+          V_COD_CENTRO_RESULTADO := NULL;
+          --
+          -- 3. VERIFICA E BUSCA A VERBA RH
+          --
+          IF R_IP.COD_VERBA_RH IS NULL
+          THEN
+            --
+            V_POSICAO := 30;
+            --
+            V_COD_VERBA_RH := PRO_OBTEM_VERBA_RH(R_IP.COD_TIPO_CURSO, R_IP.COD_CAMPUS, NVL(R_IP.COD_CURSO, R_IP.COD_CURSO_EXTENSAO), R_IP.COD_TURNO, R_IP.IND_TIPO_CONTRATO, R_IP.COD_TIPO_RUBRICA, PI_COD_INSTITUICAO);
+            --
+            IF V_COD_VERBA_RH IS NULL
+            THEN
+              PO_MSG_RETORNO := 'TIPO_CURSO = ' || R_IP.COD_TIPO_CURSO || ', ' || 'CAMPUS = ' || R_IP.COD_CAMPUS || ', ' || 'CURSO = ' || NVL(R_IP.COD_CURSO, R_IP.COD_CURSO_EXTENSAO) || ', ' || 'TIPO_TURNO = ' || R_IP.COD_TURNO || ', ' || 'TIPO_CONTRATO = ' || R_IP.IND_TIPO_CONTRATO || ', ' ||
+                                'TIPO_RUBRICA = ' || R_IP.COD_TIPO_RUBRICA;
+              RAISE ERR_PREVISTO;
+            END IF;
+            --
+          END IF; -- IF R_IP.COD_VERBA_RH IS NULL THEN
+          --
+          -- 4. VERIFICA E BUSCA O CENTRO DE RESULTADO
+          --
+          IF R_IP.COD_CENTRO_RESULTADO IS NULL
+          THEN
+            --
+            V_POSICAO := 40;
+            --
+            --COLOCAR IF PARA O CASO DE SER CURSO_DE_EXTENSAO -> ANALISAR
+            V_COD_CENTRO_RESULTADO := PRO_OBTEM_CENTRO_RESULTADO(R_IP.COD_TIPO_CURSO, R_IP.COD_CAMPUS, NVL(R_IP.COD_CURSO, R_IP.COD_CURSO_EXTENSAO), R_IP.COD_TURNO, R_IP.NOM_PROCESSO, R_IP.COD_TIPO_ATUACAO, PI_COD_INSTITUICAO);
+            --
+            IF V_COD_CENTRO_RESULTADO IS NULL
+            THEN
+              PO_MSG_RETORNO := 'TIPO_CURSO = ' || R_IP.COD_TIPO_CURSO || ', ' || 'CAMPUS = ' || R_IP.COD_CAMPUS || ', ' || 'CURSO = ' || NVL(R_IP.COD_CURSO, R_IP.COD_CURSO_EXTENSAO) || ', ' || 'TIPO_TURNO = ' || R_IP.COD_TURNO || ', ' || 'NOM_PROCESSO = ' || R_IP.NOM_PROCESSO || ', ' ||
+                                'TIPO_ATUACAO = ' || R_IP.COD_TIPO_ATUACAO;
+              RAISE ERR_PREVISTO;
+            END IF;
+            --
+          END IF; -- IF R_IP.COD_CENTRO_RESULTADO IS NULL THEN
+          --
+          -- 5. ALTERA OS DADOS DO PAGAMENTO DAS COLUNAS QUE ESTIVEREM NULAS
+          --
+          V_POSICAO := 50;
+          --
+          UPDATE SIA.A_INTERFACE_PAGAMENTO
+             SET COD_VERBA_RH         = NVL(COD_VERBA_RH, V_COD_VERBA_RH)
+                ,COD_CENTRO_RESULTADO = NVL(COD_CENTRO_RESULTADO, V_COD_CENTRO_RESULTADO)
+           WHERE NUM_SEQ_MOVIMENTO = R_IP.NUM_SEQ_MOVIMENTO
+             AND DT_MES_ANO_COMPETENCIA = R_IP.DT_MES_ANO_COMPETENCIA
+             AND COD_TIPO_RUBRICA = R_IP.COD_TIPO_RUBRICA
+             AND CICLO = R_IP.CICLO
+             AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+          --
+          V_QTD_REG_LIDOS := V_QTD_REG_LIDOS + 1;
+          --
+          /*
+          IF MOD(V_QTD_REG_GRAVADOS,1000) = 0 AND PI_COMMIT = 'S' THEN
+             COMMIT;
+          END IF;
+          */
+        --
+        END LOOP; -- FOR R_IP IN ...
+        --
+        -- RATEIO
+        --
+        IF M_TAB_NOM_PROCESSO(V_INDICE) = 'PRO_ALOCACAO_APURACAO'
+        THEN
+          --
+          FOR R_RA IN (SELECT RA.NUM_SEQ_RATEIO_ALUNO
+                             ,RA.DT_MES_ANO_COMPETENCIA
+                             ,RA.CICLO
+                             ,RA.COD_TURNO
+                             ,RA.COD_CURSO
+                             ,RA.COD_CURSO_EXTENSAO
+                             ,RA.COD_CAMPUS
+                             ,RA.COD_TIPO_CURSO
+                             ,RA.COD_CENTRO_RESULTADO_RATEIO AS COD_CENTRO_RESULTADO
+                         FROM SIA.A_RATEIO_ALUNO RA
+--                             ,SIA.CAMPUS CA
+                        WHERE RA.DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+--                          AND RA.COD_CAMPUS = CA.COD_CAMPUS
+                          AND RA.COD_INSTITUICAO = PI_COD_INSTITUICAO
+                          AND RA.CICLO = M_TAB_CICLO(V_INDICE)
+                          AND RA.COD_CENTRO_RESULTADO_RATEIO IS NULL)
+          LOOP
+            --
+            V_COD_CENTRO_RESULTADO := NULL;
+            --
+            -- 4. VERIFICA E BUSCA O CENTRO DE RESULTADO
+            --
+            IF R_RA.COD_CENTRO_RESULTADO IS NULL
+            THEN
+              --
+              V_POSICAO := 40;
+              --
+              --COLOCAR IF PARA O CASO DE SER CURSO_DE_EXTENSAO -> ANALISAR
+              V_COD_CENTRO_RESULTADO := PRO_OBTEM_CENTRO_RESULTADO(R_RA.COD_TIPO_CURSO, R_RA.COD_CAMPUS, NVL(R_RA.COD_CURSO, R_RA.COD_CURSO_EXTENSAO), R_RA.COD_TURNO, 'PRO_APURACAO_ALOCACAO', NULL, PI_COD_INSTITUICAO);
+              --
+              IF V_COD_CENTRO_RESULTADO IS NULL
+              THEN
+                PO_MSG_RETORNO := 'TIPO_CURSO = ' || R_RA.COD_TIPO_CURSO || ', ' || 'CAMPUS = ' || R_RA.COD_CAMPUS || ', ' || 'CURSO = ' || NVL(R_RA.COD_CURSO, R_RA.COD_CURSO_EXTENSAO) || ', ' || 'TURNO = ' || R_RA.COD_TURNO;
+                RAISE ERR_PREVISTO;
+              END IF;
+              --
+            END IF; -- IF R_IP.COD_CENTRO_RESULTADO IS NULL THEN
+            --
+            --
+            -- 5. ALTERA OS DADOS DO PAGAMENTO DAS COLUNAS QUE ESTIVEREM NULAS
+            --
+            V_POSICAO := 50;
+            --
+            UPDATE SIA.A_RATEIO_ALUNO
+               SET COD_CENTRO_RESULTADO_RATEIO = NVL(COD_CENTRO_RESULTADO_RATEIO, V_COD_CENTRO_RESULTADO)
+             WHERE NUM_SEQ_RATEIO_ALUNO = R_RA.NUM_SEQ_RATEIO_ALUNO
+               AND DT_MES_ANO_COMPETENCIA = R_RA.DT_MES_ANO_COMPETENCIA
+               AND CICLO = R_RA.CICLO
+               AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+            --
+            V_QTD_REG_LIDOS := V_QTD_REG_LIDOS + 1;
+            --
+            /*
+            IF MOD(V_QTD_REG_GRAVADOS,1000) = 0 AND PI_COMMIT = 'S' THEN
+               COMMIT;
+            END IF;
+            */
+          --
+          END LOOP; -- FOR R_IP IN ...
+          --
+        END IF; -- IF M_TAB_NOM_PROCESSO(V_INDICE) = 'PRO_ALOCACAO_APURACAO' THEN
+        --
+      END IF; -- IF M_TAB_CICLO(V_INDICE) IS NOT NULL..
+    --
+    END LOOP; -- FOR V_INDICE IN 1..M_TAB_CICLO.COUNT LOOP
+    --
+    -- 6. ATUALIZA A DATA DE LIBERAÇÃO PARA OS CICLOS VÁLIDOS
+    --
+    V_POSICAO := 60;
+    --
+    FOR V_INDICE IN 1 .. M_TAB_CICLO.COUNT
+    LOOP
+      IF M_TAB_CICLO(V_INDICE) IS NOT NULL AND
+         M_TAB_NOM_PROCESSO(V_INDICE) IS NOT NULL
+      THEN
+
+        UPDATE SIA.A_CONTROLE_PAGAMENTO_PROFESSOR CPP
+           SET CPP.DT_EXPORTACAO_OK = SYSDATE
+         WHERE CPP.DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+           AND CPP.CICLO = M_TAB_CICLO(V_INDICE)
+           AND CPP.NOM_PROCESSO = M_TAB_NOM_PROCESSO(V_INDICE)
+           AND CPP.COD_INSTITUICAO = PI_COD_INSTITUICAO;
+      END IF;
+    END LOOP;
+
+    IF PI_COMMIT = 'S'
+    THEN
+      COMMIT;
+    END IF;
+    --
+    PO_IND_ERRO    := '0';
+    PO_MSG_RETORNO := '';
+    --
+  EXCEPTION
+    WHEN ERR_PREVISTO THEN
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-10' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR PARÂMETROS OBRIGATÓRIOS : ' || PO_MSG_RETORNO;
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO AO LIMPAR A DATA DE LIBERAÇÃO : ' || PO_MSG_RETORNO;
+        WHEN '-25' THEN
+          PO_MSG_RETORNO := 'ERRO AO LISTAR OS REGISTROS SEM VERBA RH E/OU CENTRO RESULTADO : ' || PO_MSG_RETORNO;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR E BUSCAR A VERBA RH : ' || PO_MSG_RETORNO;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR E BUSCAR O CENTRO DE RESULTADO : ' || PO_MSG_RETORNO || '-' || SQLERRM;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO ALTERAR DADOS EM INTERFACE_PAGAMENTO : ' || PO_MSG_RETORNO;
+        WHEN '-60' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR A DATA DE LIBERAÇÃO PARA OS CICLOS VÁLIDOS : ' || PO_MSG_RETORNO;
+        ELSE
+          PO_MSG_RETORNO := PO_MSG_RETORNO || ' - ERRO NÃO LISTADO : ' || PO_MSG_RETORNO || '-' || SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_CICLOS_EXPORT_RH, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+    WHEN OTHERS THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-10' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR PARÂMETROS OBRIGATÓRIOS : ' || V_SQLERRM;
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO AO LIMPAR A DATA DE LIBERAÇÃO : ' || V_SQLERRM;
+        WHEN '-25' THEN
+          PO_MSG_RETORNO := 'ERRO AO LISTAR OS REGISTROS SEM VERBA RH E/OU CENTRO RESULTADO : ' || V_SQLERRM;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR E BUSCAR A VERBA RH : ' || V_SQLERRM;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR E BUSCAR O CENTRO DE RESULTADO : ' || V_SQLERRM || '-' || SQLERRM;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO ALTERAR DADOS EM INTERFACE_PAGAMENTO : ' || V_SQLERRM;
+        WHEN '-60' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR A DATA DE LIBERAÇÃO PARA OS CICLOS VÁLIDOS : ' || V_SQLERRM;
+        ELSE
+          PO_MSG_RETORNO := PO_MSG_RETORNO || ' - ERRO NÃO LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_CICLOS_EXPORT_RH, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, NULL, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+  END PRO_CICLOS_EXPORT_RH;

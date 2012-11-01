@@ -1,0 +1,969 @@
+  PROCEDURE PRO_APURACAO_FALTA(P_DT_COMPETENCIA          IN DATE
+                              ,P_NUM_SEQ_DADOS_PROFESSOR IN VARCHAR2 DEFAULT NULL
+                              ,P_COD_TIPO_CURSO          IN NUMBER DEFAULT NULL
+                              ,P_COD_CAMPUS              IN NUMBER DEFAULT NULL
+                              ,P_IND_TIPO_PROCESSO       IN VARCHAR2 DEFAULT NULL
+                              ,P_IND_TIPO_CONTRATO       IN VARCHAR2 DEFAULT NULL
+                              ,P_COD_USUARIO             IN VARCHAR2
+                              ,P_COMMIT                  IN VARCHAR2
+                              ,P_IND_ERRO                OUT VARCHAR2
+                              ,P_MSG_RETORNO             OUT VARCHAR2
+                              ,P_COD_INSTITUICAO         IN VARCHAR2) IS
+    --
+    -- P_IND_TIPO_PROCESSO  (G) GERAL
+    --                      (P) PARCIAL: CHAMADA ISOLADAMENTE
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    --
+    V_ERRO_ORACLE VARCHAR2(300);
+    --V_IND_ERRO                       VARCHAR2(1);
+    --V_MSG_RETORNO                    VARCHAR2(300);
+    V_TXT_PARAMETROS               VARCHAR2(500);
+    V_POSICAO                      NUMBER(03);
+    V_CONT_T                       INTEGER;
+    V_CONT_TE                      INTEGER;
+    V_CONT_HT                      INTEGER;
+    V_CONT_DT                      INTEGER;
+    V_CONT_HTE                     INTEGER;
+    V_CURSO_EXTENSAO               VARCHAR2(1);
+    V_DESTINO                      INTEGER;
+    V_CONT_DESTINO_RH              INTEGER;
+    V_CONT_DESTINO_FIN             INTEGER;
+    V_CONT_GRAVADOS_IP             INTEGER;
+    V_CONT_RUBRICA_FALTA           INTEGER;
+    V_CONT_RUBRICA_ABONO           INTEGER;
+    V_CONT_RUBRICA_REPOSICAO_FALTA PLS_INTEGER;
+    V_CONT_RUBRICA_REPOSICAO_EXTRA PLS_INTEGER;
+    --V_CONT_RUBRICA_AULA_EXTRA        PLS_INTEGER;
+    V_QTD_REG_LIDOS    PLS_INTEGER;
+    V_QTD_REG_GRAVADOS PLS_INTEGER;
+    --V_QTD_REG_DESPREZADOS            PLS_INTEGER;
+    --      V_DT_COMPETENCIA                 DATE;
+    V_DT_COMP_INI           DATE;
+    V_DT_COMP_FIM           DATE;
+    V_QTDE_OUTROS_TP_CURSOS PLS_INTEGER;
+    V_PROXIMO_CICLO         PLS_INTEGER;
+    V_ACHOU                 PLS_INTEGER;
+    V_COD_CURSO             NUMBER(10);
+    V_COD_CURSO_EXTENSAO    NUMBER(10);
+    --V_QTDE_HORAS_MOVIMENTO           NUMBER(6,2);
+    V_NUM_SEQ_TURMA          NUMBER(10);
+    V_COD_TURMA_EXTENSAO     NUMBER(10);
+    V_COD_TIPO_RUBRICA       NUMBER(2);
+    V_START                  DATE;
+    V_COD_INSTITUICAO_FILTRO NUMBER(6, 0);
+    --
+    CURSOR C_FALTA IS
+-- Select 1     
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N') AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N') AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO
+            ,V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'FT' V_OCORRENCIA
+            , -- FALTA NORMAL
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE (V_IND_FALTA = 'S' AND NVL(IND_PAGAR_FALTA_RET, 'N') = 'N' AND TRUNC(V_DT_FALTA) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+
+         --
+         AND NVL(V_IND_PAGAMENTO_ALOCACAO,'S') = 'S'   -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA)
+         --
+      UNION ALL
+-- Select 2
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N') AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N') AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO
+            ,V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'AB' V_OCORRENCIA
+            , -- ABONO NORMAL
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE (V_IND_ABONO = 'S' AND NVL(IND_PAGAR_ABONO_RET, 'N') = 'N' AND TRUNC(V_DT_LANCAMENTO_ABONO) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+         --
+         AND NVL(V_IND_PAGAMENTO_ALOCACAO,'S') = 'S'   -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA)
+         --
+      UNION ALL
+-- Select 3
+      SELECT V.TABELA
+            ,V.COD_TIPO_CURSO AS V_COD_TIPO_CURSO
+            ,V.V_COD_CURSO
+            ,V.COD_CAMPUS AS V_COD_CAMPUS
+            ,V.COD_TURNO
+            ,V.NUM_SEQ_TURMA
+            ,V.COD_PROFESSOR AS V_COD_PROFESSOR
+            ,V.NUM_SEQ_DADOS_PROFESSOR
+            ,V.NUM_MATRICULA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_FALTA
+            ,V.NUM_SEQ_SOLICITACAO
+            ,'' AS V_IND_FALTA
+            ,'' AS V_IND_ABONO
+            ,'' AS IND_FALTA_RETROATIVA
+            ,'' AS IND_ABONO_RETROATIVO
+            ,'' AS IND_REPOSICAO
+            ,V.V_IND_TIPO_CONTRATO
+            ,V.V_PERCENTUAL_APRIMORAMENTO
+            ,V.V_COD_BANCO
+            ,V.V_COD_AGENCIA
+            ,V.V_COD_AGENCIA_DV
+            ,V.V_CONTA_CORRENTE
+            ,V.V_CONTA_CORRENTE_DV
+            ,V.V_COD_CATEGORIA_PROFESSOR
+            ,V.CPF_PROFESSOR
+            ,V.TIPO_AULA
+            ,V.COD_DISCIPLINA
+            ,V.COD_TURMA
+            ,V.DT_AUTORIZA_3
+            ,V.IND_AUTORIZACAO_3
+            ,'AE' V_OCORRENCIA
+            , -- AULA EXTRA
+             1 VAL_HORA_AULA
+            ,V.COD_INSTITUICAO
+        FROM SIA.V_SOLICITACAO_AULA V
+       WHERE V.TIPO_AULA = 'E'
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V.COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V.COD_CAMPUS = P_COD_CAMPUS)
+         AND V.COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+         AND (TRUNC(V.DT_AUTORIZA_3) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND V.IND_GERA_PAGAMENTO = 'S' -- SELECIONA APENAS AULA EXTRA QUE GERA PAGAMENTO
+
+         --AND V_IND_PAGAMENTO_ALOCACAO = 'S' -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V.COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V.V_COD_CURSO = V.V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V.V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V.NUM_MATRICULA)
+         --
+      UNION ALL
+-- Select 4
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N') AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N') AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO
+            ,V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'FR' V_OCORRENCIA
+            , -- FALTA RETROATIVA
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE (V_IND_FALTA = 'S' AND IND_PAGAR_FALTA_RET = 'S' AND TRUNC(DT_LANCAMENTO_FALTA_RET) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+         --
+         AND NVL(V_IND_PAGAMENTO_ALOCACAO,'S') = 'S'   -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA)
+         --
+      UNION ALL
+-- Select 5
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N') AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N') AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO
+            ,V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'AR' V_OCORRENCIA
+            , -- ABONO RETROATIVO
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE (V_IND_ABONO = 'S' AND IND_PAGAR_ABONO_RET = 'S' AND TRUNC(DT_LANCAMENTO_ABONO_RET) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+         --
+         AND NVL(V_IND_PAGAMENTO_ALOCACAO,'S') = 'S'   -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA)
+         --
+      UNION ALL
+-- Select 6
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N') AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N') AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO
+            ,V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'RF' V_OCORRENCIA
+            , -- REPOSIÇÕES DE AULA POR FALTA
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE V_IND_TIPO_AULA = 'R'  -- REPOSIÇÕES POR FALTA
+         AND (V_IND_FALTA = 'S' AND V_IND_REPOSICAO = 'S' AND TRUNC(DT_AUTORIZA_3) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         AND IND_GERA_PAGAMENTO = 'S' -- SELECIONA APENAS A REPOSIÇÃO POR FALTA QUE GERA PAGAMENTO
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+         --
+         AND NVL(V_IND_PAGAMENTO_ALOCACAO,'S') = 'S'   -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA)
+
+      UNION ALL
+-- Select 7
+      -- AULA DE SUBSTITUIÇÃO
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR_SUB                V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR_SUB      V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA_SUB                V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL)                AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N')          AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N')          AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR_SUB          V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO_SUB    V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO_SUB                   V_COD_BANCO
+            ,V_COD_AGENCIA_SUB                 V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV_SUB              V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE_SUB              V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV_SUB           V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR_SUB     V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR_SUB               V_CPF_PROFESSOR
+
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'AS' V_OCORRENCIA
+            , -- AULA DE SUBSTITUIÇÃO
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE V_IND_TIPO_AULA = 'S'  -- AULA DE SUBSTITUIÇÃO
+         AND (V_IND_FALTA = 'S' AND V_IND_REPOSICAO = 'S' AND TRUNC(DT_AUTORIZA_3) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR_SUB = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR_SUB = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         AND IND_GERA_PAGAMENTO = 'S' -- SELECIONA APENAS A REPOSIÇÃO POR FALTA QUE GERA PAGAMENTO
+
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+         --
+         --AND V_IND_PAGAMENTO_ALOCACAO = 'S' -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO  = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND V_IND_TIPO_SALARIO_SUB = 'H'
+--         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA_SUB)
+
+       ORDER BY V_NUM_SEQ_DADOS_PROFESSOR
+               ,V_COD_PROFESSOR
+               ,V_COD_CAMPUS
+               ,V_COD_TIPO_CURSO
+               ,COD_DISCIPLINA
+               ,COD_TURMA;
+
+    --
+    R_FALTA C_FALTA%ROWTYPE;
+    --
+    --
+    -- INÍCIO DA PRO_APURACAO_FALTA
+    --
+  BEGIN
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        V_TXT_PARAMETROS := ' P_DT_COMPETENCIA   : ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || CHR(13) || ' P_NUM_SEQ_DADOS_PROFESSOR : ' || P_NUM_SEQ_DADOS_PROFESSOR || CHR(13) || ' P_COD_TIPO_CURSO   : ' || P_COD_TIPO_CURSO || CHR(13) || ' P_COD_CAMPUS       : ' || P_COD_CAMPUS || CHR(13) ||
+                            ' P_IND_TIPO_PROCESSO: ' || P_IND_TIPO_PROCESSO || CHR(13) || ' P_IND_TIPO_CONTRATO: ' || P_IND_TIPO_CONTRATO || CHR(13) || ' P_COD_INSTITUICAO  : ' || P_COD_INSTITUICAO;
+        --
+        P_IND_ERRO                     := '0';
+        P_MSG_RETORNO                  := '';
+        V_CURSO_EXTENSAO               := 'N';
+        V_CONT_T                       := 0;
+        V_CONT_TE                      := 0;
+        V_CONT_HT                      := 0;
+        V_CONT_DT                      := 0;
+        V_CONT_HTE                     := 0;
+        V_DESTINO                      := 1;
+        V_CONT_DESTINO_RH              := 0;
+        V_CONT_DESTINO_FIN             := 0;
+        V_CONT_GRAVADOS_IP             := 0;
+        V_CONT_RUBRICA_FALTA           := 0;
+        V_CONT_RUBRICA_ABONO           := 0;
+        V_CONT_RUBRICA_REPOSICAO_FALTA := 0;
+        V_CONT_RUBRICA_REPOSICAO_EXTRA := 0;
+        --V_CONT_RUBRICA_AULA_EXTRA      := 0;
+        -- Alteração - solicitação 2352. Efetuar nova alteração na data início para dia 01 do mês.
+        --          V_DT_COMP_INI                  := ADD_MONTHS(TO_DATE('16/'||TO_CHAR(P_DT_COMPETENCIA,'MM/YYYY'),'DD/MM/YYYY'),-1);
+        --          V_DT_COMP_FIM                  := TO_DATE('15/'||TO_CHAR(P_DT_COMPETENCIA,'MM/YYYY'),'DD/MM/YYYY');
+        V_DT_COMP_INI      := ADD_MONTHS(TO_DATE('01/' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY'), 'DD/MM/YYYY'), -1);
+        V_DT_COMP_FIM      := TRUNC(LAST_DAY(ADD_MONTHS(P_DT_COMPETENCIA, -1)));
+        V_QTD_REG_LIDOS    := 0;
+        V_QTD_REG_GRAVADOS := 0;
+        --V_QTD_REG_DESPREZADOS          := 0;
+        V_QTDE_OUTROS_TP_CURSOS := 0;
+        --
+        SELECT SYSDATE
+          INTO V_START
+          FROM DUAL;
+        --
+        -- 1. VALIDA PARÂMETROS OBRIGATÓRIOS
+        --
+        V_POSICAO := 10;
+        --
+        IF P_DT_COMPETENCIA IS NULL
+        THEN
+          P_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        IF P_IND_TIPO_PROCESSO IS NULL
+        THEN
+          P_MSG_RETORNO := 'O TIPO DE PROCESSO DEVE SER INFORMADO.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        V_POSICAO := 20;
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_APURACAO_FALTA';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'O PROCESSO "PRO_APURACAO_FALTA" DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- 3. ABRE O CURSOR E CARREGA AS LINHAS NO REGISTRO ANTERIOR (R_AP_ANT)
+        --
+        V_POSICAO := 30;
+        --
+        OPEN C_FALTA;
+        FETCH C_FALTA
+          INTO R_FALTA;
+        --
+        IF C_FALTA%NOTFOUND
+        THEN
+          P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODO ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || ' NO PROCESSO DE FALTA / ABONO / REPOSIÇÃO / AULA EXTRA.';
+          RAISE ERR_ADVERTENCIA;
+        END IF;
+        --
+        -- 4. OBTEM O PRÓXIMO CICLO DENTRO DE UMA COMPETÊNCIA PERTENCENTE A RUBRICA.
+        --
+        V_POSICAO := 40;
+        --
+        BEGIN
+          --
+          SELECT NVL(MAX(CICLO), 0) + 1
+            INTO V_PROXIMO_CICLO
+            FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+           WHERE DT_MES_ANO_COMPETENCIA = P_DT_COMPETENCIA
+             AND COD_INSTITUICAO = P_COD_INSTITUICAO
+             AND NOM_PROCESSO = 'PRO_APURACAO_FALTA';
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            V_ERRO_ORACLE := SQLERRM;
+            P_MSG_RETORNO := 'FALHA AO RECUPERAR O PRÓXIMO CICLO DE INTERFACE PAGAMENTO PARA O PROCESSO FALTA / ABONO / REPOSIÇÃO / AULA EXTRA.';
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        WHILE C_FALTA%FOUND
+        LOOP
+          --
+          -- ATUALIZA CONTADORES
+          --
+          V_POSICAO := 60;
+          --
+          V_CURSO_EXTENSAO := 'N';
+          --
+          V_QTD_REG_LIDOS := V_QTD_REG_LIDOS + 1;
+          --
+          IF R_FALTA.V_TABELA = 'T'
+          THEN
+            V_CONT_T := V_CONT_T + 1;
+          ELSIF R_FALTA.V_TABELA = 'TE'
+          THEN
+            V_CONT_TE := V_CONT_TE + 1;
+          ELSIF R_FALTA.V_TABELA = 'HT'
+          THEN
+            V_CONT_HT := V_CONT_HT + 1;
+          ELSIF R_FALTA.V_TABELA = 'DT'
+          THEN
+            V_CONT_DT := V_CONT_DT + 1;
+          ELSIF R_FALTA.V_TABELA = 'HTE'
+          THEN
+            V_CONT_HTE       := V_CONT_HTE + 1;
+            V_CURSO_EXTENSAO := 'S';
+          ELSE
+            P_MSG_RETORNO := 'NÃO EXISTE UMA TABELA ASSOCIADA A FALTA: ' || R_FALTA.V_TABELA;
+            RAISE ERR_PREVISTO;
+          END IF;
+          --
+          IF R_FALTA.V_CONTRATO_PROFESSOR IN ('F', 'S')
+          THEN
+            V_DESTINO         := 1;
+            V_CONT_DESTINO_RH := V_CONT_DESTINO_RH + 1;
+          ELSIF R_FALTA.V_CONTRATO_PROFESSOR = 'P'
+          THEN
+            V_DESTINO          := 2;
+            V_CONT_DESTINO_FIN := V_CONT_DESTINO_FIN + 1;
+          END IF;
+          --
+          IF (R_FALTA.V_OCORRENCIA = 'FT' AND R_FALTA.V_IND_FALTA = 'S') OR
+             (R_FALTA.V_OCORRENCIA = 'FR' AND R_FALTA.IND_FALTA_RETROATIVA = 'S')
+          THEN
+            --
+            V_CONT_RUBRICA_FALTA := V_CONT_RUBRICA_FALTA + 1;
+            V_COD_TIPO_RUBRICA   := 3;
+            --
+          ELSIF (R_FALTA.V_OCORRENCIA = 'AB' AND R_FALTA.V_IND_ABONO = 'S') OR
+                (R_FALTA.V_OCORRENCIA = 'AR' AND R_FALTA.IND_ABONO_RETROATIVO = 'S')
+          THEN
+            --
+            V_CONT_RUBRICA_ABONO := V_CONT_RUBRICA_ABONO + 1;
+            V_COD_TIPO_RUBRICA   := 4;
+            --
+          ELSIF R_FALTA.V_OCORRENCIA = 'AE'
+          THEN
+            --
+            V_CONT_RUBRICA_REPOSICAO_EXTRA := V_CONT_RUBRICA_REPOSICAO_EXTRA + 1;
+            V_COD_TIPO_RUBRICA             := 21;
+            --
+          ELSIF R_FALTA.V_OCORRENCIA = 'RF'
+          THEN
+            --
+            V_CONT_RUBRICA_REPOSICAO_FALTA := V_CONT_RUBRICA_REPOSICAO_FALTA + 1;
+            V_COD_TIPO_RUBRICA             := 20;
+            --
+          ELSIF R_FALTA.V_OCORRENCIA = 'AS'
+          THEN
+            --
+            V_CONT_RUBRICA_REPOSICAO_FALTA := V_CONT_RUBRICA_REPOSICAO_FALTA + 1;
+            V_COD_TIPO_RUBRICA             := 18;
+            --
+          END IF;
+          --
+          SELECT DECODE(R_FALTA.V_TABELA, 'HTE', NULL, R_FALTA.V_COD_CURSO)
+                ,DECODE(R_FALTA.V_TABELA, 'HTE', R_FALTA.V_COD_CURSO, NULL)
+                ,DECODE(R_FALTA.V_TABELA, 'HTE', NULL, R_FALTA.V_PK_TURMA)
+                ,DECODE(R_FALTA.V_TABELA, 'HTE', R_FALTA.V_PK_TURMA, NULL)
+            INTO V_COD_CURSO
+                ,V_COD_CURSO_EXTENSAO
+                ,V_NUM_SEQ_TURMA
+                ,V_COD_TURMA_EXTENSAO
+            FROM DUAL;
+          --
+          -- ATUALIZA A_INTERFACE_PAGAMENTO
+          --
+          V_POSICAO := 65;
+          --
+          GRAVA_ARQUIVO(V_COD_TIPO_RUBRICA                         -- PI_COD_TIPO_RUBRICA
+                       , P_DT_COMPETENCIA                          -- PI_DT_COMPETENCIA
+                       , V_PROXIMO_CICLO                           -- PI_PROXIMO_CICLO
+                       , 'PRO_APURACAO_FALTA'                      -- PI_NOM_PROCESSO
+                       , '1'                                       -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                       , V_DESTINO                                 -- PI_IND_DESTINO
+                       , V_CURSO_EXTENSAO                          -- PI_IND_CURSO_EXTENSAO
+                       , R_FALTA.V_COD_PROFESSOR                   -- PI_COD_PROFESSOR
+                       , R_FALTA.V_NUM_MATRICULA                   -- PI_NUM_MATRICULA
+                       , R_FALTA.V_COD_TIPO_CURSO                  -- PI_COD_TIPO_CURSO
+                       , V_COD_CURSO                               -- PI_COD_CURSO
+                       , V_COD_CURSO_EXTENSAO                      -- PI_COD_CURSO_EXTENSAO
+                       , R_FALTA.V_COD_CAMPUS                      -- PI_COD_CAMPUS
+                       , R_FALTA.V_COD_TURNO                       -- PI_COD_TURNO
+                       , R_FALTA.VAL_HORA_AULA                     -- PI_QTD_HORAS_MOVIMENTO
+                       , NULL                                      -- PI_VALOR_MOVIMENTO
+                       , SYSDATE                                   -- PI_DT_GERACAO
+                       , NULL                                      -- PI_DT_LIBERACAO
+                       , NULL                                      -- PI_DT_PROCESSAMENTO
+                       , R_FALTA.NUM_SEQ_SOLICITACAO               -- PI_NUM_SEQ_SOLICITACAO
+                       , NULL                                      -- PI_NUM_SEQ_ALOCACAO
+                       , NULL                                      -- PI_NUM_SEQ_ATUACAO
+                       , NULL                                      -- PI_MES_ANO_ATUACAO
+                       , R_FALTA.V_NUM_SEQ_FALTA                   -- PI_NUM_SEQ_FALTA
+                       , R_FALTA.V_PERCENTUAL_APRIMORAMENTO        -- PI_PERCENTUAL_APRIMORAMENTO
+                       , R_FALTA.V_COD_BANCO                       -- PI_COD_BANCO
+                       , R_FALTA.V_COD_AGENCIA                     -- PI_COD_AGENCIA
+                       , R_FALTA.V_COD_AGENCIA_DV                  -- PI_COD_AGENCIA_DV
+                       , R_FALTA.V_CONTA_CORRENTE                  -- PI_COD_CONTA_CORRENTE
+                       , R_FALTA.V_CONTA_CORRENTE_DV               -- PI_COD_CONTA_CORRENTE_DV
+                       , R_FALTA.V_COD_CATEGORIA_PROFESSOR         -- PI_COD_CATEGORIA_PROFESSOR
+                       , V_NUM_SEQ_TURMA                           -- PI_NUM_SEQ_TURMA
+                       , V_COD_TURMA_EXTENSAO                      -- PI_COD_TURMA_EXTENSAO
+                       , R_FALTA.V_CONTRATO_PROFESSOR              -- PI_IND_TIPO_CONTRATO
+                       , P_COD_INSTITUICAO                         -- PI_COD_INSTITUICAO
+                       , 'N'                                       -- PI_COMMIT
+                       , P_IND_ERRO                                -- PO_IND_ERRO
+                       , P_MSG_RETORNO                             -- PO_MSG_RETORNO
+                       , NULL                                      -- PI_COD_TIPO_ATUACAO
+                       , NULL                                      -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                       , 'N'                                       -- PI_IND_ENSINO_DISTANCIA
+                       , NULL                                      -- PI_QTD_DIAS_TRABALHADOS
+                       , NULL);                                    -- PI_QTD_HORAS_TEORICO
+          --
+          IF P_IND_ERRO <> '0'
+          THEN
+            RAISE ERR_PREVISTO;
+          END IF;
+          --
+          V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+          --
+          V_POSICAO := 70;
+          --
+          IF MOD(V_QTD_REG_GRAVADOS, 1000) = 0 AND
+             P_COMMIT = 'S'
+          THEN
+            COMMIT;
+          END IF;
+          --
+          FETCH C_FALTA
+            INTO R_FALTA;
+          --
+        END LOOP;
+        --
+        V_POSICAO     := 130;
+        P_MSG_RETORNO := 'QTDE DE REGISTROS T: ' || V_CONT_T || CHR(13) || 'QTDE DE REGISTROS TE: ' || V_CONT_TE || CHR(13) || 'QTDE DE REGISTROS HT: ' || V_CONT_HT || CHR(13) || 'QTDE DE REGISTROS DT: ' || V_CONT_DT || CHR(13) || 'QTDE DE REGISTROS HTE: ' || V_CONT_HTE || CHR(13) ||
+                         'QTDE DE REGISTROS ENVIADOS AO RH: ' || V_CONT_DESTINO_RH || CHR(13) || 'QTDE DE REGISTROS ENVIADOS AO FIN: ' || V_CONT_DESTINO_FIN || CHR(13) || 'QTDE DE REGISTROS NÃO PERTENCENTES AOS TIPOS DE CURSO GRADUACAO E POLITECNICO: ' || V_QTDE_OUTROS_TP_CURSOS;
+        --
+        --          DBMS_OUTPUT.PUT_LINE(SUBSTR(P_MSG_RETORNO,1,254));
+        --          DBMS_OUTPUT.PUT_LINE(SUBSTR(P_MSG_RETORNO,255,499));
+        --
+        -- INCLUI O SISTÉTICO DO PROCESSO
+        --
+        V_POSICAO := 200;
+        --
+        BEGIN
+          V_COD_INSTITUICAO_FILTRO := TO_NUMBER(P_COD_INSTITUICAO);
+        EXCEPTION
+          WHEN OTHERS THEN
+            V_COD_INSTITUICAO_FILTRO := NULL;
+        END;
+        --
+        INSERT INTO SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+          (DT_MES_ANO_COMPETENCIA
+          ,NOM_PROCESSO
+          ,CICLO
+          ,IND_TIPO_PROCESSO
+           --                    , COD_PROFESSOR
+          ,NUM_SEQ_DADOS_PROFESSOR
+          ,COD_CAMPUS
+          ,COD_TIPO_CURSO
+          ,QTD_GRAVADOS_IP
+          ,DT_INICIO_GERACAO
+          ,DT_FIM_GERACAO
+          ,IND_RETORNO
+          ,TXT_MSG_PROCESSO
+          ,TOTAL_REGS_RUBRICA_1
+          ,TOTAL_REGS_RUBRICA_2
+          ,TOTAL_REGS_RUBRICA_3
+          ,TOTAL_REGS_RUBRICA_4
+          ,TOTAL_HORAS_RUBRICA_1
+          ,TOTAL_HORAS_RUBRICA_2
+          ,TOTAL_HORAS_RUBRICA_3
+          ,TOTAL_HORAS_RUBRICA_4
+          ,QTD_REGS_DESTINO_1
+          ,QTD_REGS_DESTINO_2
+          ,IND_TIPO_CONTRATO
+          ,COD_USUARIO_LOG
+          ,COD_INSTITUICAO)
+        VALUES
+          (P_DT_COMPETENCIA
+          ,'PRO_APURACAO_FALTA'
+          ,V_PROXIMO_CICLO
+          ,P_IND_TIPO_PROCESSO
+           --                    , P_COD_PROFESSOR
+          ,P_NUM_SEQ_DADOS_PROFESSOR
+          ,P_COD_CAMPUS
+          ,P_COD_TIPO_CURSO
+          ,V_CONT_GRAVADOS_IP
+          ,V_START
+          ,SYSDATE
+          ,P_IND_ERRO
+          ,P_MSG_RETORNO
+          ,V_CONT_RUBRICA_FALTA
+          ,V_CONT_RUBRICA_ABONO
+          ,V_CONT_RUBRICA_REPOSICAO_FALTA
+          ,V_CONT_RUBRICA_REPOSICAO_EXTRA
+          ,V_CONT_RUBRICA_FALTA
+          ,V_CONT_RUBRICA_ABONO
+          ,V_CONT_RUBRICA_REPOSICAO_FALTA
+          ,V_CONT_RUBRICA_REPOSICAO_EXTRA
+          ,V_CONT_DESTINO_RH
+          ,V_CONT_DESTINO_FIN
+          ,P_IND_TIPO_CONTRATO
+          ,P_COD_USUARIO
+          ,V_COD_INSTITUICAO_FILTRO);
+        --
+        IF P_COMMIT = 'S' THEN
+          COMMIT;
+        END IF;
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --
+      EXCEPTION
+        WHEN ERR_ADVERTENCIA THEN
+          P_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          P_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          P_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          P_MSG_RETORNO := V_POSICAO || ' - ' || SQLERRM;
+          V_ERRO_ORACLE := SQLERRM;
+          P_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+      END;
+      --
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF P_COMMIT = 'S' THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF P_IND_ERRO = '2' THEN
+          --
+          SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_FALTA, IE: ' || R_FALTA.COD_INSTITUICAO, V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, P_MSG_RETORNO);
+          --
+        END IF;
+    END;
+    --
+    IF C_FALTA%ISOPEN
+    THEN
+      CLOSE C_FALTA;
+    END IF;
+    --
+  END PRO_APURACAO_FALTA;

@@ -1,0 +1,212 @@
+PROCEDURE PRO_GERA_RATEIO(PI_CICLO                  IN SIA.A_INTERFACE_PAGAMENTO.CICLO%TYPE
+                           ,PI_DT_MES_ANO_COMPETENCIA IN SIA.A_INTERFACE_PAGAMENTO.DT_MES_ANO_COMPETENCIA%TYPE
+                           ,PI_NOM_PROCESSO           IN SIA.A_INTERFACE_PAGAMENTO.NOM_PROCESSO%TYPE
+                           ,PI_NUM_SEQ_TURMA          IN SIA.A_INTERFACE_PAGAMENTO.NUM_SEQ_TURMA%TYPE
+                           ,PI_NUM_MATRICULA          IN SIA.A_INTERFACE_PAGAMENTO.NUM_MATRICULA%TYPE
+                           ,PI_COD_TIPO_RUBRICA       IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_RUBRICA%TYPE
+                           ,PI_IND_CURSO_EXTENSAO     IN SIA.A_INTERFACE_PAGAMENTO.IND_CURSO_EXTENSAO%TYPE
+                           ,PI_IND_ENSINO_DISTANCIA   IN SIA.TURMA.IND_ENSINO_DISTANCIA%TYPE DEFAULT 'N'
+                           ,PI_COD_TIPO_ATUACAO       IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_ATUACAO%TYPE DEFAULT NULL
+                           ,PI_COD_INSTITUICAO        IN SIA.INSTITUICAO_ENSINO.COD_INSTITUICAO%TYPE
+                           ,PO_IND_ERRO               OUT VARCHAR2
+                           ,PO_MSG_RETORNO            OUT VARCHAR2) IS
+    --
+    V_POSICAO        PLS_INTEGER;
+    V_TXT_PARAMETROS VARCHAR2(4000);
+    V_SQLERRM        VARCHAR2(4000);
+    --
+    V_COD_CENTRO_RESULTADO_RATEIO SIA.A_RATEIO_ALUNO.COD_CENTRO_RESULTADO_RATEIO%TYPE;
+    VNUM_SEQ_RATEIO_ALUNO         SIA.A_RATEIO_ALUNO.NUM_SEQ_RATEIO_ALUNO%TYPE;
+    VCOD_ORDEM_INTERNA            SIA.A_RATEIO_ALUNO.COD_ORDEM_INTERNA%TYPE;
+    --
+    V_USUARIO        VARCHAR2(20);
+    V_IP             VARCHAR2(50);
+    V_RETORNO_CLIENT VARCHAR2(100);
+    V_POS            NUMBER(3);
+    V_TAMANHO        NUMBER(3);
+    --
+  BEGIN
+    --
+    -- REQ. 5607 -
+    -- 5 - REALIZA O RATEIO POR ALUNOS, SOMENTE SE EXISTIR TURMA
+    -- E O ALUNO FOR REGULAR E PARA O PROCESSO DE CARGA HOR RIA
+    --
+    PO_IND_ERRO    := '0';
+    PO_MSG_RETORNO := '';
+    --
+    -- 1. INICIALIZACAO
+    --
+    V_POSICAO := 10;
+    --
+    V_TXT_PARAMETROS := ' PI_DT_COMPETENCIA  : ' || PI_DT_MES_ANO_COMPETENCIA || CHR(13) || ' PI_NOM_PROCESSO    : ' || PI_NOM_PROCESSO;
+    --
+    DBMS_APPLICATION_INFO.READ_CLIENT_INFO(V_RETORNO_CLIENT);
+    V_POS     := INSTR(V_RETORNO_CLIENT, '@');
+    V_TAMANHO := LENGTH(V_RETORNO_CLIENT);
+    V_USUARIO := SUBSTR(V_RETORNO_CLIENT, 1, (V_POS - 1));
+    V_IP      := SUBSTR(V_RETORNO_CLIENT, (V_POS + 1), V_TAMANHO);
+    --
+    IF V_USUARIO IS NULL
+    THEN
+      V_USUARIO := USER;
+    END IF;
+    --
+    -- NÃO REALIZA O PROCESSO SE ENCONTRAR UMA DESSAS CONDIÇÕES
+    --
+    IF PI_NUM_SEQ_TURMA IS NULL OR
+       TO_NUMBER(PI_COD_TIPO_RUBRICA) <> 1 OR
+       PI_IND_CURSO_EXTENSAO = 'S' OR
+       PI_NOM_PROCESSO NOT IN ('PRO_APURACAO_ALOCACAO') -- 'PRO_RETROATIVO_ALOCACAO'
+    THEN
+      RETURN;
+    END IF;
+    --
+    -- 2. EXPLODE A TURMA EM ALUNOS
+    --
+    V_POSICAO := 20;
+    --
+    FOR CALUNOS IN (SELECT ATU.NUM_SEQ_TURMA
+                          ,C.COD_TIPO_CURSO
+                          ,AC.COD_CURSO_ATUAL COD_CURSO
+                          ,AC.COD_CAMPUS_ATUAL COD_CAMPUS
+                          ,AC.COD_TURNO_ATUAL COD_TURNO
+                          ,COUNT(*) QTD_ALUNOS
+                      FROM SIA.ALUNO_TURMA ATU
+                          ,SIA.TURMA       TU
+                          ,SIA.ALUNO_CURSO AC
+                          ,SIA.CURSO       C
+                     WHERE AC.NUM_SEQ_ALUNO_CURSO = ATU.NUM_SEQ_ALUNO_CURSO
+                       AND C.COD_CURSO = AC.COD_CURSO_ATUAL
+                       AND ATU.NUM_SEQ_TURMA = TU.NUM_SEQ_TURMA
+                       AND TU.NUM_SEQ_TURMA = PI_NUM_SEQ_TURMA
+
+                       -- FERNANDO REIS EM 28/09/2006
+                       AND (ATU.COD_SITUACAO_MATRICULA IN (2, 7, 9) -- (2)Matriculado, (7)Cursada e Historiada, (9)Cursada e Não Historiada
+                           OR (ATU.COD_SITUACAO_MATRICULA IN (3, 4, 6) -- (3)Excluída, (4)Trancada, (6)Transferência Externa
+                           AND TRUNC(ATU.DT_EXCLUSAO, 'MM') = PI_DT_MES_ANO_COMPETENCIA))
+                       -- FERNANDO REIS EM 28/09/2006
+
+                     GROUP BY ATU.NUM_SEQ_TURMA
+                             ,C.COD_TIPO_CURSO
+                             ,AC.COD_CURSO_ATUAL
+                             ,AC.COD_CAMPUS_ATUAL
+                             ,AC.COD_TURNO_ATUAL)
+    LOOP
+      --
+      -- 3. BUSCA O CODIGO DO CENTRO DE RESULTADO
+      --
+      V_POSICAO := 30;
+      --
+      V_COD_CENTRO_RESULTADO_RATEIO := PRO_OBTEM_CENTRO_RESULTADO(CALUNOS.COD_TIPO_CURSO, CALUNOS.COD_CAMPUS, CALUNOS.COD_CURSO, CALUNOS.COD_TURNO, PI_NOM_PROCESSO, PI_COD_TIPO_ATUACAO, PI_COD_INSTITUICAO);
+      --
+      -- 4. INSERE NA LISTA e depois INSERIR
+      --    SE N O EXISTIR CADASTRADO NA TABELA
+      --
+      V_POSICAO := 40;
+      --
+      SELECT COUNT(*)
+        INTO V_DUMMY
+        FROM SIA.A_RATEIO_ALUNO ARA
+       WHERE ARA.CICLO = PI_CICLO
+         AND ARA.NUM_MATRICULA = PI_NUM_MATRICULA
+         AND ARA.COD_INSTITUICAO = PI_COD_INSTITUICAO
+         AND ARA.NUM_SEQ_TURMA = CALUNOS.NUM_SEQ_TURMA
+         AND ARA.COD_TIPO_CURSO = CALUNOS.COD_TIPO_CURSO
+         AND ARA.COD_CAMPUS = CALUNOS.COD_CAMPUS
+         AND ARA.COD_CURSO = CALUNOS.COD_CURSO
+         AND ARA.COD_TURNO = CALUNOS.COD_TURNO;
+      --
+      IF V_DUMMY = 0
+      THEN
+        --
+        IF PI_IND_ENSINO_DISTANCIA = 'S'
+        THEN
+          VCOD_ORDEM_INTERNA := V_TXT_PARAMETRO_OI_VIRTUAL;
+        ELSE
+          VCOD_ORDEM_INTERNA := V_TXT_PARAMETRO_OI_PRESENCIAL;
+        END IF;
+        --
+        -- 5. INSERIR EM RATEIO_ALUNO
+        --
+        V_POSICAO := 50;
+        --
+        BEGIN
+          --
+          V_TXT_PARAMETROS := 'CICLO                       = ' || PI_CICLO || CHR(13) || 'DT_MES_ANO_COMPETENCIA      = ' || PI_DT_MES_ANO_COMPETENCIA || CHR(13) || 'NUM_MATRICULA               = ' || PI_NUM_MATRICULA || CHR(13) || 'NUM_SEQ_TURMA               = ' || PI_NUM_SEQ_TURMA || CHR(13) ||
+                              'COD_TIPO_CURSO              = ' || CALUNOS.COD_TIPO_CURSO || CHR(13) || 'COD_CAMPUS                  = ' || CALUNOS.COD_CAMPUS || CHR(13) || 'COD_CURSO                   = ' || CALUNOS.COD_CURSO || CHR(13) || 'COD_TURNO                   = ' || CALUNOS.COD_TURNO ||
+                              CHR(13) || 'QTD_ALUNO_RATEIO            = ' || CALUNOS.QTD_ALUNOS || CHR(13) || 'COD_CENTRO_RESULTADO_RATEIO = ' || V_COD_CENTRO_RESULTADO_RATEIO || CHR(13) || 'COD_ORDEM_INTERNA           = ' || VCOD_ORDEM_INTERNA;
+          --
+          INSERT INTO SIA.A_RATEIO_ALUNO
+            (NUM_SEQ_RATEIO_ALUNO
+            ,NUM_SEQ_TURMA
+            ,COD_TURNO
+            ,COD_TURMA_EXTENSAO
+            ,COD_CURSO
+            ,COD_CURSO_EXTENSAO
+            ,COD_CAMPUS
+            ,COD_TIPO_CURSO
+            ,DT_MES_ANO_COMPETENCIA
+            ,QTD_ALUNO_RATEIO
+            ,COD_CENTRO_RESULTADO_RATEIO
+            ,NUM_MATRICULA
+            ,CICLO
+            ,COD_ORDEM_INTERNA
+            ,COD_INSTITUICAO
+            ,COD_USUARIO_LOG
+            ,DT_ATUALIZA_LOG
+            ,TXT_IP_LOG)
+          VALUES
+            (INTERFACE.S_RATEIO_ALUNO.NEXTVAL
+            ,PI_NUM_SEQ_TURMA
+            ,CALUNOS.COD_TURNO
+            ,NULL --PI_COD_TURMA_EXTENSAO
+            ,CALUNOS.COD_CURSO
+            ,NULL --PI_COD_CURSO_EXTENSAO
+            ,CALUNOS.COD_CAMPUS
+            ,CALUNOS.COD_TIPO_CURSO
+            ,PI_DT_MES_ANO_COMPETENCIA
+            ,CALUNOS.QTD_ALUNOS
+            ,V_COD_CENTRO_RESULTADO_RATEIO
+            ,PI_NUM_MATRICULA
+            ,PI_CICLO
+            ,VCOD_ORDEM_INTERNA
+            ,PI_COD_INSTITUICAO
+            ,V_USUARIO
+            ,SYSDATE
+            ,V_IP)
+          RETURNING NUM_SEQ_RATEIO_ALUNO INTO VNUM_SEQ_RATEIO_ALUNO;
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            --
+            RAISE_APPLICATION_ERROR(-20101, SQLCODE || ' - ' || SQLERRM);
+            --
+        END;
+        --
+      END IF; --
+    --
+    END LOOP; -- FOR cALUNOS IN
+    --
+  EXCEPTION
+    WHEN OTHERS THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO DIVIDIR A TURMA EM ALUNOS : ' || V_SQLERRM;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO NA BUSCAR DO CODIGO DO CENTRO DE RESULTADO : ' || V_SQLERRM;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO INSERIR NA LISTA PARA INSERIR DEPOIS : ' || V_SQLERRM;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO INSERIR EM RATEIO_ALUNO : ' || V_SQLERRM;
+        ELSE
+          PO_MSG_RETORNO := 'ERRO N O LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_GERA_RATEIO, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+      --
+  END PRO_GERA_RATEIO;

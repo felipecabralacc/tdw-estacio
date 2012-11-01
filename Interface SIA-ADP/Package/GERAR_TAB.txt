@@ -1,0 +1,36 @@
+PROCEDURE GERAR_TAB(P_QTD     IN PLS_INTEGER
+                     ,P_STRING  IN VARCHAR2
+                     ,P_NTABLE1 IN OUT NOCOPY T_NUMBER
+                     ,P_NTABLE2 IN OUT NOCOPY T_VARCHAR
+                     ,P_SEP_LIN IN VARCHAR2
+                     ,P_SEP_COL IN VARCHAR2) IS
+    INI1     PLS_INTEGER := 1;
+    FIM1     PLS_INTEGER;
+    INI2     PLS_INTEGER := 1;
+    FIM2     PLS_INTEGER;
+    CONTEUDO VARCHAR2(100);
+    --
+  BEGIN
+    --
+    P_NTABLE1.EXTEND(P_QTD); -- NUMBER
+    P_NTABLE2.EXTEND(P_QTD); -- VARCHAR
+    --
+    FOR I IN 1 .. P_QTD
+    LOOP
+      --
+      FIM2     := INSTR(P_STRING, P_SEP_LIN, INI1, 1);
+      CONTEUDO := SUBSTR(P_STRING, INI1, FIM2 - INI1);
+      IF CONTEUDO <> ' '
+      THEN
+        --
+        FIM1 := INSTR(P_STRING, P_SEP_COL, INI1, 1);
+        INI2 := INSTR(P_STRING, P_SEP_COL, INI1, 1) + 1;
+        P_NTABLE1(I) := TO_NUMBER(SUBSTR(P_STRING, INI1, FIM1 - INI1));
+        P_NTABLE2(I) := TRIM(SUBSTR(P_STRING, INI2, FIM2 - INI2));
+        --
+      END IF;
+      INI1 := FIM2 + 1;
+      --
+    END LOOP;
+    --
+  END GERAR_TAB;

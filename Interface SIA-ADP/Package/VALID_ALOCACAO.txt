@@ -1,0 +1,29 @@
+FUNCTION VALID_ALOCACAO(PI_IND_TELEPRESENCIAL  IN VARCHAR2
+                        , PI_COD_DIA_SEMANA      IN VARCHAR2
+                        , PI_DT_AULA             IN DATE
+                        , PI_HH_INI_AULA         IN DATE
+                        , PI_HH_FIM_AULA         IN DATE)
+  RETURN BOOLEAN
+  AS
+     I   NUMBER;
+  BEGIN
+
+       FOR I IN 1..T_ALOCACAO.COUNT
+       LOOP
+
+          IF PI_IND_TELEPRESENCIAL = T_ALOCACAO(I).IND_TELEPRESENCIAL THEN
+            IF PI_COD_DIA_SEMANA = T_ALOCACAO(I).COD_DIA_SEMANA THEN
+               IF PI_DT_AULA = T_ALOCACAO(I).DT_AULA THEN
+                  IF PRO_CONFLITO_HORARIO(PI_HH_INI_AULA, PI_HH_FIM_AULA
+                                         ,T_ALOCACAO(I).HH_INI_AULA, T_ALOCACAO(I).HH_FIM_AULA) THEN
+                     RETURN TRUE;
+                  END IF;
+               END IF;
+            END IF;
+          END IF;
+
+       END LOOP;
+
+       RETURN FALSE;
+
+  END VALID_ALOCACAO;

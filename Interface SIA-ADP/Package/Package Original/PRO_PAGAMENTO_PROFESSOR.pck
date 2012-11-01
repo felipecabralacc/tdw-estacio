@@ -1,0 +1,9917 @@
+CREATE OR REPLACE PACKAGE SIA.PRO_PAGAMENTO_PROFESSOR IS
+  --
+  -- AUTHOR  : FERNANDO REIS
+  -- CREATED : 03/01/2005
+  -- PURPOSE :
+  --
+  T_ALOCACAO          SIA.TBL_ALOCACAO          := SIA.TBL_ALOCACAO();
+  T_TURMA             SIA.TBL_TURMA_PAGAMENTO   := SIA.TBL_TURMA_PAGAMENTO();
+
+  TYPE TB_ALOCACA0 IS TABLE OF NUMBER(10) INDEX BY VARCHAR2(10);
+  A_ALOCACAO          TB_ALOCACA0;
+--  V_ALOCACAO          TB_ALOCACA0;
+
+  FUNCTION PRO_OBTEM_VERBA_RH(PI_COD_TIPO_CURSO    IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_CURSO%TYPE
+                             ,PI_COD_CAMPUS        IN SIA.A_INTERFACE_PAGAMENTO.COD_CAMPUS%TYPE
+                             ,PI_COD_CURSO         IN NUMBER
+                             ,PI_COD_TURNO         IN SIA.A_INTERFACE_PAGAMENTO.COD_TURNO%TYPE
+                             ,PI_IND_TIPO_CONTRATO IN SIA.A_INTERFACE_PAGAMENTO.IND_TIPO_CONTRATO%TYPE
+                             ,PI_COD_TIPO_RUBRICA  IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_RUBRICA%TYPE
+                             ,PI_COD_INSTITUICAO  IN SIA.INSTITUICAO_ENSINO.COD_INSTITUICAO%TYPE) RETURN VARCHAR2;
+  --
+  FUNCTION PRO_OBTEM_CENTRO_RESULTADO(PI_COD_TIPO_CURSO   IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_CURSO%TYPE
+                                     ,PI_COD_CAMPUS       IN SIA.A_INTERFACE_PAGAMENTO.COD_CAMPUS%TYPE
+                                     ,PI_COD_CURSO        IN NUMBER
+                                     ,PI_COD_TURNO        IN SIA.A_INTERFACE_PAGAMENTO.COD_TURNO%TYPE
+                                     ,PI_NOM_PROCESSO     IN SIA.A_INTERFACE_PAGAMENTO.NOM_PROCESSO%TYPE
+                                     ,PI_COD_TIPO_ATUACAO IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_ATUACAO%TYPE
+                                     ,PI_COD_INSTITUICAO  IN SIA.INSTITUICAO_ENSINO.COD_INSTITUICAO%TYPE) RETURN VARCHAR2;
+  --
+  PROCEDURE PRO_PAGAMENTO_PROFESSOR(PI_DT_COMPETENCIA    IN SIA.A_INTERFACE_PAGAMENTO.DT_MES_ANO_COMPETENCIA%TYPE
+                                   ,PI_COD_PROFESSOR     IN SIA.A_INTERFACE_PAGAMENTO.COD_PROFESSOR%TYPE
+                                   ,PI_COD_TIPO_CURSO    IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_CURSO%TYPE
+                                   ,PI_COD_CAMPUS        IN SIA.A_INTERFACE_PAGAMENTO.COD_CAMPUS%TYPE
+                                   ,PI_IND_TIPO_PROCESSO IN VARCHAR2
+                                   ,PI_IND_TIPO_CONTRATO IN VARCHAR2
+                                   ,PI_IND_TIPO_APURACAO IN VARCHAR2
+                                   ,PI_COD_USUARIO       IN VARCHAR2
+                                   ,PI_COD_INSTITUICAO   IN VARCHAR2
+                                   ,PI_COMMIT            IN VARCHAR2
+                                   ,PO_IND_ERRO          OUT VARCHAR2
+                                   ,PO_MSG_RETORNO       OUT VARCHAR2);
+  --
+  PROCEDURE PRO_CICLOS_EXPORT_RH(PI_DT_COMPETENCIA  IN DATE
+                                ,PI_TAB_CICLO       IN VARCHAR2
+                                ,PI_QTD_LINHAS      IN PLS_INTEGER
+                                ,PI_COMMIT          IN VARCHAR2
+                                ,PO_IND_ERRO        OUT VARCHAR2
+                                ,PO_MSG_RETORNO     OUT VARCHAR2
+                                ,PI_COD_INSTITUICAO IN NUMBER);
+  --
+  PROCEDURE PRO_EXPORTA_PAGAMENTO(PI_DT_COMPETENCIA  IN DATE
+                                 ,PI_COD_USUARIO     IN VARCHAR2
+                                 ,PI_TXT_IP          IN VARCHAR2
+                                 ,PI_COMMIT          IN VARCHAR2
+                                 ,PI_COD_INSTITUICAO IN NUMBER
+                                 ,PO_IND_ERRO        OUT VARCHAR2
+                                 ,PO_MSG_RETORNO     OUT VARCHAR2);
+  --
+  PROCEDURE PRO_EXPORTA_PROFESSOR(PI_DT_COMPETENCIA    IN DATE
+                                 ,PI_DT_ALT_CAD_INI    IN DATE
+                                 ,PI_DT_ALT_CAD_FIM    IN DATE
+                                 ,PI_IND_TIPO_CONTRATO IN VARCHAR2
+                                 ,PI_COMMIT            IN VARCHAR2
+                                 ,PO_QTDE_PROF_GERADOS OUT INTEGER
+                                 ,PO_IND_ERRO          OUT VARCHAR2
+                                 ,PO_MSG_RETORNO       OUT VARCHAR2
+                                 ,PI_COD_INSTITUICAO   IN NUMBER);
+
+  --
+  PROCEDURE PRO_INTERFACE_RATEIO(PI_DT_COMPETENCIA  IN DATE
+                                ,PI_NOM_PROCESSO    IN VARCHAR2
+                                ,PI_COMMIT          IN VARCHAR2
+                                ,PI_COD_INSTITUICAO IN NUMBER
+                                ,PO_IND_ERRO        OUT VARCHAR2
+                                ,PO_MSG_RETORNO     OUT VARCHAR2);
+
+   PROCEDURE CARGA_A_CALENDARIO(P_DT_COMPETENCIA IN DATE);
+  --
+END PRO_PAGAMENTO_PROFESSOR;
+/
+CREATE OR REPLACE PACKAGE BODY SIA."PRO_PAGAMENTO_PROFESSOR" IS
+  --
+  V_DUMMY PLS_INTEGER;
+  TYPE T_NUMBER IS TABLE OF NUMBER(12);
+  TYPE T_VARCHAR IS TABLE OF VARCHAR2(2048);
+  --
+  --TYPE T_INTERFACE_PAGTO IS TABLE OF SIA.INTERFACE_PAGAMENTO%ROWTYPE;
+  --
+  -- LISTA DE PARAMETROS DE PROFESSOR
+  V_TXT_PARAMETRO_OI_PRESENCIAL SIA.PARAMETROS_PROFESSOR.TXT_PARAMETRO%TYPE;
+  V_TXT_PARAMETRO_OI_VIRTUAL    SIA.PARAMETROS_PROFESSOR.TXT_PARAMETRO%TYPE;
+  V_TXT_PARAM_VRB_ATE59         SIA.PARAMETROS_PROFESSOR.TXT_PARAMETRO%TYPE;
+  V_TXT_PARAM_VRB_ACIMA59       SIA.PARAMETROS_PROFESSOR.TXT_PARAMETRO%TYPE;
+  V_TXT_PARAMETRO_CR_APOIO      SIA.PARAMETROS_PROFESSOR.TXT_PARAMETRO%TYPE;
+  V_TXT_PARAMETRO_CR_ESPECIALIZ SIA.PARAMETROS_PROFESSOR.TXT_PARAMETRO%TYPE;
+  V_TXT_PARAMETRO_CR_ATUACAO    SIA.PARAMETROS_PROFESSOR.TXT_PARAMETRO%TYPE;
+--  V_COD_INSTITUICAO             SIA.CAMPUS.COD_INSTITUICAO %TYPE;
+  --
+  PROCEDURE GERAR_TAB(P_QTD     IN PLS_INTEGER
+                     ,P_STRING  IN VARCHAR2
+                     ,P_NTABLE1 IN OUT NOCOPY T_NUMBER
+                     ,P_NTABLE2 IN OUT NOCOPY T_VARCHAR
+                     ,P_SEP_LIN IN VARCHAR2
+                     ,P_SEP_COL IN VARCHAR2) IS
+    INI1     PLS_INTEGER := 1;
+    FIM1     PLS_INTEGER;
+    INI2     PLS_INTEGER := 1;
+    FIM2     PLS_INTEGER;
+    CONTEUDO VARCHAR2(100);
+    --
+  BEGIN
+    --
+    P_NTABLE1.EXTEND(P_QTD); -- NUMBER
+    P_NTABLE2.EXTEND(P_QTD); -- VARCHAR
+    --
+    FOR I IN 1 .. P_QTD
+    LOOP
+      --
+      FIM2     := INSTR(P_STRING, P_SEP_LIN, INI1, 1);
+      CONTEUDO := SUBSTR(P_STRING, INI1, FIM2 - INI1);
+      IF CONTEUDO <> ' '
+      THEN
+        --
+        FIM1 := INSTR(P_STRING, P_SEP_COL, INI1, 1);
+        INI2 := INSTR(P_STRING, P_SEP_COL, INI1, 1) + 1;
+        P_NTABLE1(I) := TO_NUMBER(SUBSTR(P_STRING, INI1, FIM1 - INI1));
+        P_NTABLE2(I) := TRIM(SUBSTR(P_STRING, INI2, FIM2 - INI2));
+        --
+      END IF;
+      INI1 := FIM2 + 1;
+      --
+    END LOOP;
+    --
+  END;
+
+--
+-- VALIDA CONFLITO HORARIO
+--
+FUNCTION PRO_CONFLITO_HORARIO(PI_HH_INI_1         IN DATE
+                             ,PI_HH_FIM_1         IN DATE
+                             ,PI_HH_INI_2         IN DATE
+                             ,PI_HH_FIM_2         IN DATE
+                             ) RETURN BOOLEAN
+IS
+   V_HH_INI_1      DATE;
+   V_HH_FIM_1      DATE;
+   V_HH_INI_2      DATE;
+   V_HH_FIM_2      DATE;
+
+BEGIN
+
+   V_HH_INI_1  := TO_DATE(TO_CHAR(PI_HH_INI_1,'HH24:MI'),'HH24:MI');
+   V_HH_FIM_1  := TO_DATE(TO_CHAR(PI_HH_FIM_1,'HH24:MI'),'HH24:MI');
+   V_HH_INI_2  := TO_DATE(TO_CHAR(PI_HH_INI_2,'HH24:MI'),'HH24:MI');
+   V_HH_FIM_2  := TO_DATE(TO_CHAR(PI_HH_FIM_2,'HH24:MI'),'HH24:MI');
+
+-- DEBUG
+--   V_HHINI_1   := TO_CHAR(PI_HH_INI_1,'HH24:MI');
+--   V_HHFIM_1   := TO_CHAR(PI_HH_FIM_1,'HH24:MI');
+--   V_HHINI_2   := TO_CHAR(PI_HH_INI_2,'HH24:MI');
+--   V_HHFIM_2   := TO_CHAR(PI_HH_FIM_2,'HH24:MI');
+
+
+   IF ( (V_HH_FIM_1 > V_HH_INI_2) AND (V_HH_FIM_1 <= V_HH_FIM_2) ) THEN
+      RETURN (TRUE);
+   END IF;
+
+   IF ( (V_HH_INI_1 >= V_HH_INI_2) AND (V_HH_INI_1 < V_HH_FIM_2) ) THEN
+      RETURN(TRUE);
+   END IF;
+
+/*if ((parseFloat(piHrFim) > parseFloat(piHrIniMat)) && (parseFloat(piHrFim) <= parseFloat(piHrFimMat)))
+     return false;
+
+  if (parseFloat(piHrIni) >= parseFloat(piHrIniMat) && parseFloat(piHrIni)(piHrIni) < parseFloat(piHrFimMat) )
+     return false;
+*/
+
+   RETURN(FALSE);
+
+END PRO_CONFLITO_HORARIO;
+
+
+  --
+  -- VALIDA ALOCACAO
+  FUNCTION VALID_ALOCACAO(PI_IND_TELEPRESENCIAL  IN VARCHAR2
+                        , PI_COD_DIA_SEMANA      IN VARCHAR2
+                        , PI_DT_AULA             IN DATE
+                        , PI_HH_INI_AULA         IN DATE
+                        , PI_HH_FIM_AULA         IN DATE)
+  RETURN BOOLEAN
+  AS
+     I   NUMBER;
+  BEGIN
+
+       FOR I IN 1..T_ALOCACAO.COUNT
+       LOOP
+
+          IF PI_IND_TELEPRESENCIAL = T_ALOCACAO(I).IND_TELEPRESENCIAL THEN
+            IF PI_COD_DIA_SEMANA = T_ALOCACAO(I).COD_DIA_SEMANA THEN
+               IF PI_DT_AULA = T_ALOCACAO(I).DT_AULA THEN
+                  IF PRO_CONFLITO_HORARIO(PI_HH_INI_AULA, PI_HH_FIM_AULA
+                                         ,T_ALOCACAO(I).HH_INI_AULA, T_ALOCACAO(I).HH_FIM_AULA) THEN
+                     RETURN TRUE;
+                  END IF;
+               END IF;
+            END IF;
+          END IF;
+
+       END LOOP;
+
+       RETURN FALSE;
+
+  END VALID_ALOCACAO;
+
+  -- INSERT PAGAMENTO
+  PROCEDURE SET_PAGAMENTO(PI_IND_TELEPRESENCIAL    IN VARCHAR2
+                        , PI_NUM_SEQ_ALOCACAO      IN NUMBER
+                        , PI_COD_DIA_SEMANA        IN VARCHAR2
+                        , PI_DT_AULA               IN DATE
+                        , PI_HH_INI_AULA           IN DATE
+                        , PI_HH_FIM_AULA           IN DATE
+                        , PI_VAL_HORA              IN NUMBER
+                        , PI_TABELA                    IN VARCHAR2
+                        , PI_COD_PROFESSOR             IN VARCHAR2
+                        , PI_NUM_MATRICULA             IN VARCHAR2
+                        , PI_DT_INI_ALOCACAO           IN DATE
+                        , PI_DT_FIM_ALOCACAO           IN DATE
+                        , PI_APRIMORAMENTO             IN NUMBER
+                        , PI_COD_CAMPUS                IN NUMBER
+                        , PI_COD_TIPO_CURSO            IN NUMBER
+                        , PI_COD_CURSO                 IN NUMBER
+                        , PI_COD_TURNO                 IN VARCHAR2
+                        , PI_ID_TURNO                  IN NUMBER
+                        , PI_COD_BANCO                 IN VARCHAR2
+                        , PI_COD_AGENCIA               IN VARCHAR2
+                        , PI_COD_AGENCIA_DV            IN VARCHAR2
+                        , PI_CONTA_CORRENTE            IN VARCHAR2
+                        , PI_CONTA_CORRENTE_DV         IN VARCHAR2
+                        , PI_COD_CATEGORIA_PROFESSOR   IN VARCHAR2
+                        , PI_NUM_SEQ_TURMA             IN VARCHAR2
+                        , PI_IND_TIPO_CONTRATO         IN VARCHAR2
+                        , PI_IND_PAGAMENTO             IN NUMBER DEFAULT NULL)
+
+  AS
+      I  NUMBER;
+      J  NUMBER;
+  BEGIN
+
+        T_ALOCACAO.EXTEND;
+        I             := T_ALOCACAO.COUNT;
+        T_ALOCACAO(I) := SIA.R_ALOCACAO(NULL, NULL, NULL, NULL
+                                       ,NULL, NULL);
+
+        T_ALOCACAO(I).IND_TELEPRESENCIAL   := PI_IND_TELEPRESENCIAL;
+        T_ALOCACAO(I).NUM_SEQ_ALOCACAO     := PI_NUM_SEQ_ALOCACAO;
+        T_ALOCACAO(I).COD_DIA_SEMANA       := PI_COD_DIA_SEMANA;
+        T_ALOCACAO(I).DT_AULA              := PI_DT_AULA;
+        T_ALOCACAO(I).HH_INI_AULA          := PI_HH_INI_AULA;
+        T_ALOCACAO(I).HH_FIM_AULA          := PI_HH_FIM_AULA;
+
+        --
+        IF NOT A_ALOCACAO.EXISTS(PI_NUM_SEQ_ALOCACAO) THEN
+           --
+           T_TURMA.EXTEND;
+           J          := T_TURMA.COUNT;
+           T_TURMA(J) := SIA.R_TURMA_PAGAMENTO(NULL, NULL, NULL, NULL, NULL
+                                              ,NULL, NULL, NULL, NULL, NULL
+                                              ,NULL, NULL, NULL, NULL, NULL
+                                              ,NULL, NULL, NULL, NULL, NULL
+                                              ,NULL, NULL, NULL, NULL, NULL
+                                              ,NULL, NULL);
+
+           A_ALOCACAO(PI_NUM_SEQ_ALOCACAO)    := J;
+
+           T_TURMA(J).TABELA                  := PI_TABELA;
+           T_TURMA(J).NUM_SEQ_ALOCACAO        := PI_NUM_SEQ_ALOCACAO;
+           T_TURMA(J).COD_PROFESSOR           := PI_COD_PROFESSOR;
+           T_TURMA(J).NUM_MATRICULA           := PI_NUM_MATRICULA;
+           T_TURMA(J).DT_INI_ALOCACAO         := PI_DT_INI_ALOCACAO;
+           T_TURMA(J).DT_FIM_ALOCACAO         := PI_DT_FIM_ALOCACAO;
+           T_TURMA(J).APRIMORAMENTO           := PI_APRIMORAMENTO;
+           T_TURMA(J).COD_CAMPUS              := PI_COD_CAMPUS;
+           T_TURMA(J).COD_TIPO_CURSO          := PI_COD_TIPO_CURSO;
+           T_TURMA(J).COD_CURSO               := PI_COD_CURSO;
+           T_TURMA(J).COD_TURNO               := PI_COD_TURNO;
+           T_TURMA(J).ID_TURNO                := PI_ID_TURNO;
+           T_TURMA(J).COD_BANCO               := PI_COD_BANCO;
+           T_TURMA(J).COD_AGENCIA             := PI_COD_AGENCIA;
+           T_TURMA(J).COD_AGENCIA_DV          := PI_COD_AGENCIA_DV;
+           T_TURMA(J).CONTA_CORRENTE          := PI_CONTA_CORRENTE;
+           T_TURMA(J).CONTA_CORRENTE_DV       := PI_CONTA_CORRENTE_DV;
+           T_TURMA(J).COD_CATEGORIA_PROFESSOR := PI_COD_CATEGORIA_PROFESSOR;
+           T_TURMA(J).NUM_SEQ_TURMA           := PI_NUM_SEQ_TURMA;
+           T_TURMA(J).HH_INI_AULA             := PI_HH_INI_AULA;
+           T_TURMA(J).HH_FIM_AULA             := PI_HH_FIM_AULA;
+           T_TURMA(J).IND_TIPO_CONTRATO       := PI_IND_TIPO_CONTRATO;
+           T_TURMA(J).VAL_HORA_AULA           := PI_VAL_HORA;
+           T_TURMA(J).IND_TELEPRESENCIAL      := PI_IND_TELEPRESENCIAL;
+           T_TURMA(J).QTD_DIA_TRABALHADO      := 1;
+           T_TURMA(J).IND_PAGAMENTO           := PI_IND_PAGAMENTO;
+           --
+        ELSE
+           --
+            J  := A_ALOCACAO(PI_NUM_SEQ_ALOCACAO);
+            T_TURMA(J).QTD_DIA_TRABALHADO := T_TURMA(J).QTD_DIA_TRABALHADO + 1;
+           --
+        END IF;
+
+  END SET_PAGAMENTO;
+
+
+  --
+  -- BUSCA A VERBA DO RH
+  --
+  FUNCTION PRO_OBTEM_VERBA_RH(PI_COD_TIPO_CURSO    IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_CURSO%TYPE
+                             ,PI_COD_CAMPUS        IN SIA.A_INTERFACE_PAGAMENTO.COD_CAMPUS%TYPE
+                             ,PI_COD_CURSO         IN NUMBER
+                             ,PI_COD_TURNO         IN SIA.A_INTERFACE_PAGAMENTO.COD_TURNO%TYPE
+                             ,PI_IND_TIPO_CONTRATO IN SIA.A_INTERFACE_PAGAMENTO.IND_TIPO_CONTRATO%TYPE
+                             ,PI_COD_TIPO_RUBRICA  IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_RUBRICA%TYPE
+                             ,PI_COD_INSTITUICAO   IN SIA.INSTITUICAO_ENSINO.COD_INSTITUICAO%TYPE) RETURN VARCHAR2 IS
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    V_COD_VERBA_RH VARCHAR2(20);
+    --
+  BEGIN
+    --
+    V_COD_VERBA_RH := NULL;
+    --
+    -- OBTÉM O COD_INSTITUICAO ATRAVÉS DOS CAMPUS
+/*    BEGIN
+      SELECT COD_INSTITUICAO
+        INTO V_COD_INSTITUICAO
+        FROM SIA.CAMPUS
+       WHERE COD_CAMPUS = PI_COD_CAMPUS;
+    EXCEPTION
+      WHEN OTHERS THEN
+        V_COD_INSTITUICAO := NULL;
+    END;
+*/    --
+    -- VALIDAÇÃO E CRÍTICA DOS PARÂMETROS DE ENTRADA.
+    --
+    BEGIN
+      --
+      SELECT COD_VERBA_RH
+        INTO V_COD_VERBA_RH
+        FROM SIA.EXCECAO_PAGTO_PROFESSOR
+       WHERE COD_TIPO_CURSO = PI_COD_TIPO_CURSO
+         AND COD_CAMPUS = PI_COD_CAMPUS
+         AND COD_CURSO = PI_COD_CURSO
+         AND COD_TURNO = PI_COD_TURNO
+         AND IND_TIPO_CONTRATO = PI_IND_TIPO_CONTRATO
+         AND COD_TIPO_RUBRICA = PI_COD_TIPO_RUBRICA
+         AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+      --
+    EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+        BEGIN
+          --
+          SELECT COD_VERBA_RH
+            INTO V_COD_VERBA_RH
+            FROM SIA.REGRA_PAGTO_PROFESSOR
+           WHERE COD_TIPO_CURSO = PI_COD_TIPO_CURSO
+             AND COD_CAMPUS = PI_COD_CAMPUS
+             AND IND_TIPO_CONTRATO = PI_IND_TIPO_CONTRATO
+             AND COD_TIPO_RUBRICA = PI_COD_TIPO_RUBRICA
+             AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            BEGIN
+              --
+              SELECT CASE PI_IND_TIPO_CONTRATO
+                       WHEN 'F' THEN
+                        COD_VERBA_RH
+                       WHEN 'S' THEN
+                        COD_VERBA_PRESTADOR
+                       ELSE
+                        COD_VERBA_PESSOA_JURIDICA
+                     END
+                INTO V_COD_VERBA_RH
+                FROM SIA.RUBRICA_INTERFACE
+               WHERE COD_TIPO_RUBRICA = PI_COD_TIPO_RUBRICA;
+              --
+            EXCEPTION
+              WHEN NO_DATA_FOUND THEN
+                RETURN NULL;
+              WHEN OTHERS THEN
+                RETURN NULL;
+            END;
+            --
+          WHEN OTHERS THEN
+            RETURN NULL;
+        END;
+        --
+      WHEN OTHERS THEN
+        RETURN NULL;
+    END;
+    --
+    RETURN V_COD_VERBA_RH;
+    --
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN NULL;
+  END PRO_OBTEM_VERBA_RH;
+  --
+  -- BUSCA O CENTRO DE RESULTADO
+  --
+  FUNCTION PRO_OBTEM_CENTRO_RESULTADO(PI_COD_TIPO_CURSO   IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_CURSO%TYPE
+                                     ,PI_COD_CAMPUS       IN SIA.A_INTERFACE_PAGAMENTO.COD_CAMPUS%TYPE
+                                     ,PI_COD_CURSO        IN NUMBER
+                                     ,PI_COD_TURNO        IN SIA.A_INTERFACE_PAGAMENTO.COD_TURNO%TYPE
+                                     ,PI_NOM_PROCESSO     IN SIA.A_INTERFACE_PAGAMENTO.NOM_PROCESSO%TYPE
+                                     ,PI_COD_TIPO_ATUACAO IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_ATUACAO%TYPE
+                                     ,PI_COD_INSTITUICAO  IN SIA.INSTITUICAO_ENSINO.COD_INSTITUICAO%TYPE) RETURN VARCHAR2 IS
+    --
+    ERR_PREVISTO EXCEPTION;
+    --
+    V_SQL                  VARCHAR(1000);
+    V_IND_REGULAR_EXTENSAO VARCHAR2(1);
+    --
+    V_COD_TIPO_CURSO_SAP    SIA.TIPO_CURSO.COD_TIPO_CURSO_SAP%TYPE;
+    V_COD_CURSO_SAP         SIA.CURSO.COD_CURSO_SAP%TYPE;
+    V_COD_CAMPUS_SAP        SIA.CAMPUS.COD_CAMPUS_SAP%TYPE;
+    V_COD_TURNO_SAP         SIA.TURNO.COD_TURNO_SAP%TYPE;
+    V_IND_CR_APOIO          SIA.TIPO_ATUACAO.IND_CR_APOIO%TYPE;
+    PO_COD_CENTRO_RESULTADO INTERFACE.SAP_CENTRO_RESULTADO.COD_CENTRO_RESULTADO%TYPE;
+
+    --
+  BEGIN
+    --
+    --  BUSCA O INDICADOR DE TIPO DO CURSO (REGULAR OU EXTENSÃO)
+    --
+    IF PI_COD_TIPO_CURSO IS NOT NULL
+    THEN
+      --
+      SELECT NVL(IND_REGULAR_EXTENSAO, 'R')
+        INTO V_IND_REGULAR_EXTENSAO
+        FROM SIA.TIPO_CURSO
+       WHERE COD_TIPO_CURSO = PI_COD_TIPO_CURSO;
+      --
+    ELSIF PI_COD_CURSO IS NOT NULL
+    THEN
+      --
+      SELECT NVL(TC.IND_REGULAR_EXTENSAO, 'R')
+        INTO V_IND_REGULAR_EXTENSAO
+        FROM SIA.TIPO_CURSO TC
+            ,SIA.CURSO      C
+       WHERE C.COD_TIPO_CURSO = TC.COD_TIPO_CURSO
+         AND C.COD_CURSO = PI_COD_CURSO;
+      --
+    END IF; -- IF PI_COD_TIPO_CURSO IS NOT NULL THEN
+
+    --
+    --  BUSCA O INDICADOR DE CR DE APOIO PARA O TIPO DE ATUAÇÃO
+    --
+    IF PI_COD_TIPO_ATUACAO IS NOT NULL
+    THEN
+      --
+    BEGIN
+      SELECT TA.IND_CR_APOIO
+        INTO V_IND_CR_APOIO
+        FROM SIA.TIPO_ATUACAO TA
+       WHERE TA.COD_TIPO_ATUACAO = PI_COD_TIPO_ATUACAO
+         AND TA.IND_FIXO_VARIAVEL = 'F';
+
+    EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+        V_IND_CR_APOIO := 'N';
+      WHEN OTHERS THEN
+        RETURN NULL;
+    END;
+      --
+    END IF; -- IF PI_COD_TIPO_ATUACAO IS NOT NULL THEN
+
+    --
+    --  BUSCA O CÓDIGO DO TIPO CURSO NO SAP PARA COMPOR A ATUAÇÃO
+    --
+    IF PI_COD_TIPO_CURSO IS NOT NULL
+    THEN
+      --
+      SELECT TC.COD_TIPO_CURSO_SAP
+        INTO V_COD_TIPO_CURSO_SAP
+        FROM SIA.TIPO_CURSO TC
+       WHERE TC.COD_TIPO_CURSO = PI_COD_TIPO_CURSO;
+      --
+    END IF; -- IF PI_COD_TIPO_CURSO IS NOT NULL
+
+    --
+    --  BUSCA O CÓDIGO DO CAMPUS NO SAP PARA COMPOR A ATUAÇÃO
+    --
+    IF PI_COD_CAMPUS IS NOT NULL
+    THEN
+      --
+      SELECT CA.COD_CAMPUS_SAP
+        INTO V_COD_CAMPUS_SAP
+        FROM SIA.CAMPUS CA
+       WHERE CA.COD_CAMPUS = PI_COD_CAMPUS;
+      --
+    END IF; -- IF PI_COD_CAMPUS IS NOT NULL
+      --
+      -- SE O TIPO DE ATUAÇÃO UTILIZA O CR DE APOIO OU ESPECIALIZAÇÃO ('A'-Apoio - 'E'-Especialização - 'N'-Normal)
+      --
+    IF V_IND_CR_APOIO <> 'N'
+    THEN
+      --
+      --  PREPARA O PARÂMETRO PARA BUSCAR COD_CENTRO_RESULTADO PARA AS ATUAÇÕES FIXAS
+      --
+      V_TXT_PARAMETRO_CR_ATUACAO := NULL;
+      IF V_IND_CR_APOIO = 'A'
+      THEN
+        --
+        V_TXT_PARAMETRO_CR_ATUACAO := V_TXT_PARAMETRO_CR_APOIO;
+      ELSE
+        V_TXT_PARAMETRO_CR_ATUACAO := V_TXT_PARAMETRO_CR_ESPECIALIZ;
+        --
+      END IF; -- V_IND_CR_APOIO = 'A'
+      --
+      -- BUSCA O COD_CENTRO_RESULTADO DE APOIO DAS ATUAÇÕES FIXAS
+      --
+      BEGIN
+        --
+        SELECT COD_CENTRO_RESULTADO
+          INTO PO_COD_CENTRO_RESULTADO
+          FROM INTERFACE.SAP_CENTRO_RESULTADO_R3 SCR
+         WHERE SCR.COD_CENTRO_RESULTADO = V_COD_CAMPUS_SAP || V_TXT_PARAMETRO_CR_ATUACAO
+           AND SYSDATE BETWEEN SCR.DT_VALIDADE_INI AND SCR.DT_VALIDADE_FIM
+           AND ROWNUM = 1;
+        --
+      EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+          PO_COD_CENTRO_RESULTADO := NULL;
+        WHEN OTHERS THEN
+          RETURN NULL;
+      END;
+    --
+    --
+    -- SE CHEGAREM OS PARÂMETROS BÁSICOS, BUSCA O CENTRO DE RESULTADO DA INTERFACE.SAP_CENTRO_RESULTADO_R3
+    -- ATRAVÉS DA COMPOSIÇÃO (CAMPUS / TIPO CURSO / CURSO / TURNO).
+    --
+    ELSIF PI_COD_TIPO_CURSO IS NOT NULL AND -- ELSIF V_IND_CR_APOIO <> 'N'
+       PI_COD_CAMPUS IS NOT NULL AND
+       PI_COD_CURSO IS NOT NULL
+    THEN
+      --
+      IF V_IND_REGULAR_EXTENSAO = 'R' THEN
+        --
+        SELECT C.COD_CURSO_SAP
+          INTO V_COD_CURSO_SAP
+          FROM SIA.CURSO C
+         WHERE C.COD_CURSO = PI_COD_CURSO;
+        --
+      ELSE
+        --
+        SELECT C.COD_CURSO_EXTENSAO_SAP
+          INTO V_COD_CURSO_SAP
+          FROM SIA.CURSO_EXTENSAO C
+         WHERE C.COD_CURSO_EXTENSAO = PI_COD_CURSO;
+        --
+      END IF; -- IF V_IND_REGULAR_EXTENSAO = 'R' THEN
+      --
+      BEGIN
+        --
+        IF PI_COD_TIPO_CURSO IN (3) OR
+           V_IND_REGULAR_EXTENSAO <> 'R'
+        THEN
+          V_COD_TURNO_SAP := '99';
+        ELSE
+          SELECT T.COD_TURNO_SAP
+            INTO V_COD_TURNO_SAP
+            FROM SIA.TURNO T
+           WHERE T.COD_TURNO = PI_COD_TURNO;
+        END IF;
+        --
+      EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+          V_COD_TURNO_SAP := '99';
+        WHEN OTHERS THEN
+          RETURN NULL;
+      END;
+      --
+      -- BUSCA O COD_CENTRO_RESULTADO EM COD_CURSO OU COD_CURSO_EXTENSAO
+      --
+      BEGIN
+        --
+        SELECT COD_CENTRO_RESULTADO
+          INTO PO_COD_CENTRO_RESULTADO
+          FROM INTERFACE.SAP_CENTRO_RESULTADO_R3 SCR
+         WHERE SCR.COD_CENTRO_RESULTADO = V_COD_CAMPUS_SAP || V_COD_TIPO_CURSO_SAP || V_COD_CURSO_SAP || V_COD_TURNO_SAP
+           AND SYSDATE BETWEEN SCR.DT_VALIDADE_INI AND SCR.DT_VALIDADE_FIM
+           AND ROWNUM = 1;
+        --
+      EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+          PO_COD_CENTRO_RESULTADO := NULL;
+        WHEN OTHERS THEN
+          RETURN NULL;
+      END;
+      --
+      -- SE O TIPO DE ATUAÇÃO UTILIZA O CR DE APOIO
+      --
+    ELSE -- ELSIF PI_COD_TIPO_CURSO IS NOT NULL AND PI_COD_CAMPUS IS NOT NULL AND
+      --
+      -- SE NÃO CHEGAREM TODOS OS PARÂMETROS BÁSICOS, BUSCA O CENTRO DE RESULTADO
+      -- DA INTERFACE.SAP_CENTRO_RESULTADO
+      --
+      V_SQL := ' SELECT COD_CENTRO_RESULTADO ';
+      V_SQL := V_SQL || ' FROM   INTERFACE.SAP_CENTRO_RESULTADO';
+
+      IF PI_COD_CAMPUS IS NULL
+      THEN
+        V_SQL := V_SQL || ' WHERE COD_CAMPUS            IS NULL';
+      ELSE
+        V_SQL := V_SQL || ' WHERE COD_CAMPUS            = ' || PI_COD_CAMPUS;
+      END IF;
+
+      IF PI_COD_TIPO_CURSO IS NULL
+      THEN
+        V_SQL := V_SQL || ' AND COD_TIPO_CURSO            IS NULL';
+      ELSE
+        V_SQL := V_SQL || ' AND COD_TIPO_CURSO            = ' || PI_COD_TIPO_CURSO;
+      END IF;
+
+      IF PI_COD_CURSO IS NULL
+      THEN
+        V_SQL := V_SQL || ' AND COD_CURSO              IS NULL';
+        V_SQL := V_SQL || ' AND COD_CURSO_EXTENSAO     IS NULL';
+      ELSE
+        IF V_IND_REGULAR_EXTENSAO = 'R'
+        THEN
+          V_SQL := V_SQL || ' AND COD_CURSO              = ' || PI_COD_CURSO;
+        ELSIF V_IND_REGULAR_EXTENSAO = 'E'
+        THEN
+          V_SQL := V_SQL || ' AND COD_CURSO_EXTENSAO     = ' || PI_COD_CURSO;
+        END IF;
+      END IF;
+
+      IF PI_COD_TURNO IS NULL
+      THEN
+        V_SQL := V_SQL || ' AND COD_TURNO                 IS NULL';
+      ELSE
+        V_SQL := V_SQL || ' AND COD_TURNO                 = ' || PI_COD_TURNO;
+      END IF;
+
+      V_SQL := V_SQL || ' AND    COD_TIPO_ATUACAO          = :PI_COD_TIPO_ATUACAO';
+      V_SQL := V_SQL || ' AND    COD_TIPO_CENTRO_RESULTADO = ''A''';
+      V_SQL := V_SQL || ' AND    COD_INSTITUICAO = :PI_COD_INSTITUICAO';
+      V_SQL := V_SQL || ' AND    ROWNUM=1';
+
+      EXECUTE IMMEDIATE V_SQL
+        INTO PO_COD_CENTRO_RESULTADO
+        USING PI_COD_TIPO_ATUACAO, PI_COD_INSTITUICAO;
+    END IF; -- IF  PI_COD_TIPO_CURSO NOT IS NULL...
+    --
+    RETURN PO_COD_CENTRO_RESULTADO;
+    --
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN NULL;
+  END PRO_OBTEM_CENTRO_RESULTADO;
+  --
+  PROCEDURE PRO_GERA_RATEIO(PI_CICLO                  IN SIA.A_INTERFACE_PAGAMENTO.CICLO%TYPE
+                           ,PI_DT_MES_ANO_COMPETENCIA IN SIA.A_INTERFACE_PAGAMENTO.DT_MES_ANO_COMPETENCIA%TYPE
+                           ,PI_NOM_PROCESSO           IN SIA.A_INTERFACE_PAGAMENTO.NOM_PROCESSO%TYPE
+                           ,PI_NUM_SEQ_TURMA          IN SIA.A_INTERFACE_PAGAMENTO.NUM_SEQ_TURMA%TYPE
+                           ,PI_NUM_MATRICULA          IN SIA.A_INTERFACE_PAGAMENTO.NUM_MATRICULA%TYPE
+                           ,PI_COD_TIPO_RUBRICA       IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_RUBRICA%TYPE
+                           ,PI_IND_CURSO_EXTENSAO     IN SIA.A_INTERFACE_PAGAMENTO.IND_CURSO_EXTENSAO%TYPE
+                           ,PI_IND_ENSINO_DISTANCIA   IN SIA.TURMA.IND_ENSINO_DISTANCIA%TYPE DEFAULT 'N'
+                           ,PI_COD_TIPO_ATUACAO       IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_ATUACAO%TYPE DEFAULT NULL
+                           ,PI_COD_INSTITUICAO        IN SIA.INSTITUICAO_ENSINO.COD_INSTITUICAO%TYPE
+                           ,PO_IND_ERRO               OUT VARCHAR2
+                           ,PO_MSG_RETORNO            OUT VARCHAR2) IS
+    --
+    V_POSICAO        PLS_INTEGER;
+    V_TXT_PARAMETROS VARCHAR2(4000);
+    V_SQLERRM        VARCHAR2(4000);
+    --
+    V_COD_CENTRO_RESULTADO_RATEIO SIA.A_RATEIO_ALUNO.COD_CENTRO_RESULTADO_RATEIO%TYPE;
+    VNUM_SEQ_RATEIO_ALUNO         SIA.A_RATEIO_ALUNO.NUM_SEQ_RATEIO_ALUNO%TYPE;
+    VCOD_ORDEM_INTERNA            SIA.A_RATEIO_ALUNO.COD_ORDEM_INTERNA%TYPE;
+    --
+    V_USUARIO        VARCHAR2(20);
+    V_IP             VARCHAR2(50);
+    V_RETORNO_CLIENT VARCHAR2(100);
+    V_POS            NUMBER(3);
+    V_TAMANHO        NUMBER(3);
+    --
+  BEGIN
+    --
+    -- REQ. 5607 -
+    -- 5 - REALIZA O RATEIO POR ALUNOS, SOMENTE SE EXISTIR TURMA
+    -- E O ALUNO FOR REGULAR E PARA O PROCESSO DE CARGA HOR RIA
+    --
+    PO_IND_ERRO    := '0';
+    PO_MSG_RETORNO := '';
+    --
+    -- 1. INICIALIZACAO
+    --
+    V_POSICAO := 10;
+    --
+    V_TXT_PARAMETROS := ' PI_DT_COMPETENCIA  : ' || PI_DT_MES_ANO_COMPETENCIA || CHR(13) || ' PI_NOM_PROCESSO    : ' || PI_NOM_PROCESSO;
+    --
+    DBMS_APPLICATION_INFO.READ_CLIENT_INFO(V_RETORNO_CLIENT);
+    V_POS     := INSTR(V_RETORNO_CLIENT, '@');
+    V_TAMANHO := LENGTH(V_RETORNO_CLIENT);
+    V_USUARIO := SUBSTR(V_RETORNO_CLIENT, 1, (V_POS - 1));
+    V_IP      := SUBSTR(V_RETORNO_CLIENT, (V_POS + 1), V_TAMANHO);
+    --
+    IF V_USUARIO IS NULL
+    THEN
+      V_USUARIO := USER;
+    END IF;
+    --
+    -- NÃO REALIZA O PROCESSO SE ENCONTRAR UMA DESSAS CONDIÇÕES
+    --
+    IF PI_NUM_SEQ_TURMA IS NULL OR
+       TO_NUMBER(PI_COD_TIPO_RUBRICA) <> 1 OR
+       PI_IND_CURSO_EXTENSAO = 'S' OR
+       PI_NOM_PROCESSO NOT IN ('PRO_APURACAO_ALOCACAO') -- 'PRO_RETROATIVO_ALOCACAO'
+    THEN
+      RETURN;
+    END IF;
+    --
+    -- 2. EXPLODE A TURMA EM ALUNOS
+    --
+    V_POSICAO := 20;
+    --
+    FOR CALUNOS IN (SELECT ATU.NUM_SEQ_TURMA
+                          ,C.COD_TIPO_CURSO
+                          ,AC.COD_CURSO_ATUAL COD_CURSO
+                          ,AC.COD_CAMPUS_ATUAL COD_CAMPUS
+                          ,AC.COD_TURNO_ATUAL COD_TURNO
+                          ,COUNT(*) QTD_ALUNOS
+                      FROM SIA.ALUNO_TURMA ATU
+                          ,SIA.TURMA       TU
+                          ,SIA.ALUNO_CURSO AC
+                          ,SIA.CURSO       C
+                     WHERE AC.NUM_SEQ_ALUNO_CURSO = ATU.NUM_SEQ_ALUNO_CURSO
+                       AND C.COD_CURSO = AC.COD_CURSO_ATUAL
+                       AND ATU.NUM_SEQ_TURMA = TU.NUM_SEQ_TURMA
+                       AND TU.NUM_SEQ_TURMA = PI_NUM_SEQ_TURMA
+
+                       -- FERNANDO REIS EM 28/09/2006
+                       AND (ATU.COD_SITUACAO_MATRICULA IN (2, 7, 9) -- (2)Matriculado, (7)Cursada e Historiada, (9)Cursada e Não Historiada
+                           OR (ATU.COD_SITUACAO_MATRICULA IN (3, 4, 6) -- (3)Excluída, (4)Trancada, (6)Transferência Externa
+                           AND TRUNC(ATU.DT_EXCLUSAO, 'MM') = PI_DT_MES_ANO_COMPETENCIA))
+                       -- FERNANDO REIS EM 28/09/2006
+
+                     GROUP BY ATU.NUM_SEQ_TURMA
+                             ,C.COD_TIPO_CURSO
+                             ,AC.COD_CURSO_ATUAL
+                             ,AC.COD_CAMPUS_ATUAL
+                             ,AC.COD_TURNO_ATUAL)
+    LOOP
+      --
+      -- 3. BUSCA O CODIGO DO CENTRO DE RESULTADO
+      --
+      V_POSICAO := 30;
+      --
+      V_COD_CENTRO_RESULTADO_RATEIO := PRO_OBTEM_CENTRO_RESULTADO(CALUNOS.COD_TIPO_CURSO, CALUNOS.COD_CAMPUS, CALUNOS.COD_CURSO, CALUNOS.COD_TURNO, PI_NOM_PROCESSO, PI_COD_TIPO_ATUACAO, PI_COD_INSTITUICAO);
+      --
+      -- 4. INSERE NA LISTA e depois INSERIR
+      --    SE N O EXISTIR CADASTRADO NA TABELA
+      --
+      V_POSICAO := 40;
+      --
+      SELECT COUNT(*)
+        INTO V_DUMMY
+        FROM SIA.A_RATEIO_ALUNO ARA
+       WHERE ARA.CICLO = PI_CICLO
+         AND ARA.NUM_MATRICULA = PI_NUM_MATRICULA
+         AND ARA.COD_INSTITUICAO = PI_COD_INSTITUICAO
+         AND ARA.NUM_SEQ_TURMA = CALUNOS.NUM_SEQ_TURMA
+         AND ARA.COD_TIPO_CURSO = CALUNOS.COD_TIPO_CURSO
+         AND ARA.COD_CAMPUS = CALUNOS.COD_CAMPUS
+         AND ARA.COD_CURSO = CALUNOS.COD_CURSO
+         AND ARA.COD_TURNO = CALUNOS.COD_TURNO;
+      --
+      IF V_DUMMY = 0
+      THEN
+        --
+        IF PI_IND_ENSINO_DISTANCIA = 'S'
+        THEN
+          VCOD_ORDEM_INTERNA := V_TXT_PARAMETRO_OI_VIRTUAL;
+        ELSE
+          VCOD_ORDEM_INTERNA := V_TXT_PARAMETRO_OI_PRESENCIAL;
+        END IF;
+        --
+        -- 5. INSERIR EM RATEIO_ALUNO
+        --
+        V_POSICAO := 50;
+        --
+        BEGIN
+          --
+          V_TXT_PARAMETROS := 'CICLO                       = ' || PI_CICLO || CHR(13) || 'DT_MES_ANO_COMPETENCIA      = ' || PI_DT_MES_ANO_COMPETENCIA || CHR(13) || 'NUM_MATRICULA               = ' || PI_NUM_MATRICULA || CHR(13) || 'NUM_SEQ_TURMA               = ' || PI_NUM_SEQ_TURMA || CHR(13) ||
+                              'COD_TIPO_CURSO              = ' || CALUNOS.COD_TIPO_CURSO || CHR(13) || 'COD_CAMPUS                  = ' || CALUNOS.COD_CAMPUS || CHR(13) || 'COD_CURSO                   = ' || CALUNOS.COD_CURSO || CHR(13) || 'COD_TURNO                   = ' || CALUNOS.COD_TURNO ||
+                              CHR(13) || 'QTD_ALUNO_RATEIO            = ' || CALUNOS.QTD_ALUNOS || CHR(13) || 'COD_CENTRO_RESULTADO_RATEIO = ' || V_COD_CENTRO_RESULTADO_RATEIO || CHR(13) || 'COD_ORDEM_INTERNA           = ' || VCOD_ORDEM_INTERNA;
+          --
+          INSERT INTO SIA.A_RATEIO_ALUNO
+            (NUM_SEQ_RATEIO_ALUNO
+            ,NUM_SEQ_TURMA
+            ,COD_TURNO
+            ,COD_TURMA_EXTENSAO
+            ,COD_CURSO
+            ,COD_CURSO_EXTENSAO
+            ,COD_CAMPUS
+            ,COD_TIPO_CURSO
+            ,DT_MES_ANO_COMPETENCIA
+            ,QTD_ALUNO_RATEIO
+            ,COD_CENTRO_RESULTADO_RATEIO
+            ,NUM_MATRICULA
+            ,CICLO
+            ,COD_ORDEM_INTERNA
+            ,COD_INSTITUICAO
+            ,COD_USUARIO_LOG
+            ,DT_ATUALIZA_LOG
+            ,TXT_IP_LOG)
+          VALUES
+            (INTERFACE.S_RATEIO_ALUNO.NEXTVAL
+            ,PI_NUM_SEQ_TURMA
+            ,CALUNOS.COD_TURNO
+            ,NULL --PI_COD_TURMA_EXTENSAO
+            ,CALUNOS.COD_CURSO
+            ,NULL --PI_COD_CURSO_EXTENSAO
+            ,CALUNOS.COD_CAMPUS
+            ,CALUNOS.COD_TIPO_CURSO
+            ,PI_DT_MES_ANO_COMPETENCIA
+            ,CALUNOS.QTD_ALUNOS
+            ,V_COD_CENTRO_RESULTADO_RATEIO
+            ,PI_NUM_MATRICULA
+            ,PI_CICLO
+            ,VCOD_ORDEM_INTERNA
+            ,PI_COD_INSTITUICAO
+            ,V_USUARIO
+            ,SYSDATE
+            ,V_IP)
+          RETURNING NUM_SEQ_RATEIO_ALUNO INTO VNUM_SEQ_RATEIO_ALUNO;
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            --
+            RAISE_APPLICATION_ERROR(-20101, SQLCODE || ' - ' || SQLERRM);
+            --
+        END;
+        --
+      END IF; --
+    --
+    END LOOP; -- FOR cALUNOS IN
+    --
+  EXCEPTION
+    WHEN OTHERS THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO DIVIDIR A TURMA EM ALUNOS : ' || V_SQLERRM;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO NA BUSCAR DO CODIGO DO CENTRO DE RESULTADO : ' || V_SQLERRM;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO INSERIR NA LISTA PARA INSERIR DEPOIS : ' || V_SQLERRM;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO INSERIR EM RATEIO_ALUNO : ' || V_SQLERRM;
+        ELSE
+          PO_MSG_RETORNO := 'ERRO N O LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_GERA_RATEIO, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+      --
+  END PRO_GERA_RATEIO;
+  --
+  PROCEDURE GRAVA_ARQUIVO(PI_COD_TIPO_RUBRICA         IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_RUBRICA%TYPE
+                         ,PI_DT_COMPETENCIA           IN SIA.A_INTERFACE_PAGAMENTO.DT_MES_ANO_COMPETENCIA%TYPE
+                         ,PI_PROXIMO_CICLO            IN SIA.A_INTERFACE_PAGAMENTO.CICLO%TYPE
+                         ,PI_NOM_PROCESSO             IN SIA.A_INTERFACE_PAGAMENTO.NOM_PROCESSO%TYPE
+                         ,PI_IND_SITUACAO_PAGAMENTO   IN SIA.A_INTERFACE_PAGAMENTO.IND_SITUACAO_PAGAMENTO%TYPE
+                         ,PI_IND_DESTINO              IN SIA.A_INTERFACE_PAGAMENTO.IND_DESTINO%TYPE
+                         ,PI_IND_CURSO_EXTENSAO       IN SIA.A_INTERFACE_PAGAMENTO.IND_CURSO_EXTENSAO%TYPE
+                         ,PI_COD_PROFESSOR            IN SIA.A_INTERFACE_PAGAMENTO.COD_PROFESSOR%TYPE
+                         ,PI_NUM_MATRICULA            IN SIA.A_INTERFACE_PAGAMENTO.NUM_MATRICULA%TYPE
+                         ,PI_COD_TIPO_CURSO           IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_CURSO%TYPE
+                         ,PI_COD_CURSO                IN SIA.A_INTERFACE_PAGAMENTO.COD_CURSO%TYPE
+                         ,PI_COD_CURSO_EXTENSAO       IN SIA.A_INTERFACE_PAGAMENTO.COD_CURSO_EXTENSAO%TYPE
+                         ,PI_COD_CAMPUS               IN SIA.A_INTERFACE_PAGAMENTO.COD_CAMPUS%TYPE
+                         ,PI_COD_TURNO                IN SIA.A_INTERFACE_PAGAMENTO.COD_TURNO%TYPE
+                         ,PI_QTD_HORAS_MOVIMENTO      IN SIA.A_INTERFACE_PAGAMENTO.QTD_HORAS_MOVIMENTO%TYPE
+                         ,PI_VALOR_MOVIMENTO          IN SIA.A_INTERFACE_PAGAMENTO.VALOR_MOVIMENTO%TYPE
+                         ,PI_DT_GERACAO               IN SIA.A_INTERFACE_PAGAMENTO.DT_GERACAO%TYPE
+                         ,PI_DT_LIBERACAO             IN SIA.A_INTERFACE_PAGAMENTO.DT_LIBERACAO%TYPE
+                         ,PI_DT_PROCESSAMENTO         IN SIA.A_INTERFACE_PAGAMENTO.DT_PROCESSAMENTO%TYPE
+                         ,PI_NUM_SEQ_SOLICITACAO      IN SIA.A_INTERFACE_PAGAMENTO.NUM_SEQ_SOLICITACAO%TYPE
+                         ,PI_NUM_SEQ_ALOCACAO         IN SIA.A_INTERFACE_PAGAMENTO.NUM_SEQ_ALOCACAO%TYPE
+                         ,PI_NUM_SEQ_ATUACAO          IN SIA.A_INTERFACE_PAGAMENTO.NUM_SEQ_ATUACAO%TYPE
+                         ,PI_MES_ANO_ATUACAO          IN SIA.A_INTERFACE_PAGAMENTO.MES_ANO_ATUACAO%TYPE
+                         ,PI_NUM_SEQ_FALTA            IN SIA.A_INTERFACE_PAGAMENTO.NUM_SEQ_FALTA%TYPE
+                         ,PI_PERCENTUAL_APRIMORAMENTO IN SIA.A_INTERFACE_PAGAMENTO.PERCENTUAL_APRIMORAMENTO%TYPE
+                         ,PI_COD_BANCO                IN SIA.A_INTERFACE_PAGAMENTO.COD_BANCO%TYPE
+                         ,PI_COD_AGENCIA              IN SIA.A_INTERFACE_PAGAMENTO.COD_AGENCIA%TYPE
+                         ,PI_COD_AGENCIA_DV           IN SIA.A_INTERFACE_PAGAMENTO.COD_AGENCIA_DV%TYPE
+                         ,PI_COD_CONTA_CORRENTE       IN SIA.A_INTERFACE_PAGAMENTO.COD_CONTA_CORRENTE%TYPE
+                         ,PI_COD_CONTA_CORRENTE_DV    IN SIA.A_INTERFACE_PAGAMENTO.COD_CONTA_CORRENTE_DV%TYPE
+                         ,PI_COD_CATEGORIA_PROFESSOR  IN SIA.A_INTERFACE_PAGAMENTO.COD_CATEGORIA_PROFESSOR%TYPE
+                         ,PI_NUM_SEQ_TURMA            IN SIA.A_INTERFACE_PAGAMENTO.NUM_SEQ_TURMA%TYPE
+                         ,PI_COD_TURMA_EXTENSAO       IN SIA.A_INTERFACE_PAGAMENTO.COD_TURMA_EXTENSAO%TYPE
+                         ,PI_IND_TIPO_CONTRATO        IN SIA.A_INTERFACE_PAGAMENTO.IND_TIPO_CONTRATO%TYPE
+                         ,PI_COD_INSTITUICAO          IN SIA.INSTITUICAO_ENSINO.COD_INSTITUICAO%TYPE
+                         ,PI_COMMIT                   IN VARCHAR2 DEFAULT 'N'
+                         ,PO_IND_ERRO                 OUT VARCHAR2
+                         ,PO_MSG_RETORNO              OUT VARCHAR2
+                         ,PI_COD_TIPO_ATUACAO         IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_ATUACAO%TYPE DEFAULT NULL
+                         ,PI_QTD_HORAS_TRABALHADAS    IN SIA.A_INTERFACE_PAGAMENTO.QTD_HORAS_TRABALHADAS%TYPE DEFAULT NULL
+                         ,PI_IND_ENSINO_DISTANCIA     IN SIA.TURMA.IND_ENSINO_DISTANCIA%TYPE DEFAULT 'N'
+                         ,PI_QTD_DIAS_TRABALHADOS     IN SIA.INTERFACE_PAGAMENTO.QTD_DIAS_TRABALHADOS%TYPE DEFAULT NULL
+                         ,PI_QTD_HORAS_TEORICO        IN SIA.TURMA.QTD_HORAS_TEORICO%TYPE DEFAULT NULL) IS
+    --
+    ERR_PREVISTO EXCEPTION;
+    --
+    V_POSICAO              PLS_INTEGER;
+    V_TXT_PARAMETROS       VARCHAR2(4000);
+    V_SQLERRM              VARCHAR2(4000);
+    V_COD_VERBA_RH         SIA.A_INTERFACE_PAGAMENTO.COD_VERBA_RH%TYPE;
+    V_COD_CENTRO_RESULTADO SIA.A_INTERFACE_PAGAMENTO.COD_CENTRO_RESULTADO%TYPE;
+    --
+    V_QTD_HORAS_MOVIMENTO   SIA.A_INTERFACE_PAGAMENTO.QTD_HORAS_MOVIMENTO%TYPE;
+    V_QTD_HORAS_TRABALHADAS SIA.A_INTERFACE_PAGAMENTO.QTD_HORAS_TRABALHADAS%TYPE;
+    --
+  BEGIN
+    --
+    -- 1. INICIALIZACAO
+    --
+    V_POSICAO := 10;
+    --
+    V_TXT_PARAMETROS := ' PI_NUM_SEQ_TURMA   : ' || PI_NUM_SEQ_TURMA || CHR(13) || ' PI_COD_TURMA_EXTENSAO    : ' || PI_COD_TURMA_EXTENSAO || CHR(13) || ' P_COD_PROFESSOR    : ' || PI_COD_PROFESSOR || CHR(13) || ' PI_NOM_PROCESSO    : ' || PI_NOM_PROCESSO;
+    --
+    -- REQ. 5390 - FERNANDO REIS / ANDERSON PINHEIRO - 28/06/2006
+    -- N O PERMITIR QUE A CARGA HORARIA ULTRAPASSE 4.5
+    --
+    V_QTD_HORAS_MOVIMENTO   := PI_QTD_HORAS_MOVIMENTO;
+    V_QTD_HORAS_TRABALHADAS := PI_QTD_HORAS_TRABALHADAS;
+
+		-----COMENTADO/ALTERADO EM 03/09/2010 POR CARLOS ABRANTES E MIRIAM POIS ESTAVA PAGANDO FIXO PARA TODOS OS
+		--PROFESSORES O VALOR DA CARGA HORÁRIA DE 4.5
+  /*  IF PI_NOM_PROCESSO IN ('PRO_APURACAO_ALOCACAO','PRO_RETROATIVO_ALOCACAO') THEN
+      --
+      IF PI_COD_TIPO_RUBRICA = 1 AND V_QTD_HORAS_MOVIMENTO > 4.5 THEN
+        V_QTD_HORAS_MOVIMENTO := 4.5;
+      ELSIF PI_COD_TIPO_RUBRICA = 2 AND V_QTD_HORAS_MOVIMENTO > 3 THEN
+        V_QTD_HORAS_MOVIMENTO := 3;
+      END IF;
+      --
+      IF PI_COD_TIPO_RUBRICA = 1 AND V_QTD_HORAS_TRABALHADAS > 4.5 THEN
+        V_QTD_HORAS_TRABALHADAS := 4.5;
+      END IF;
+      --
+    END IF;
+    */
+
+    -- 2. BUSCA O CODIGO DA VERBA DO RH
+    --
+    V_POSICAO := 20;
+    --
+    -- 2.1. OBTEM A VERBA DO RH DA ATUAÇÃO QUE POSSUI INDICAÇÃO DIRETA DE RUBRICA DE PAGAMENTO.
+    --
+    V_COD_VERBA_RH := NULL;
+    --
+    IF PI_COD_TIPO_ATUACAO IS NOT NULL THEN
+     BEGIN
+       --
+       SELECT CASE PI_IND_TIPO_CONTRATO WHEN 'F' THEN
+                 RI.COD_VERBA_RH
+                WHEN 'S' THEN
+								 RI.COD_VERBA_PRESTADOR
+                ELSE
+                 RI.COD_VERBA_PESSOA_JURIDICA
+              END
+         INTO V_COD_VERBA_RH
+         FROM SIA.TIPO_ATUACAO TA
+             ,SIA.RUBRICA_INTERFACE RI
+        WHERE TA.COD_TIPO_RUBRICA = RI.COD_TIPO_RUBRICA
+          AND TA.COD_TIPO_ATUACAO = PI_COD_TIPO_ATUACAO;
+       --
+       EXCEPTION
+       WHEN NO_DATA_FOUND THEN
+           V_COD_VERBA_RH := NULL;
+           RAISE ERR_PREVISTO;
+       END;
+       --
+    END IF;
+    --
+    -- 2.2. OBTEM A VERBA DO RH ATRAVÉS DA ROTINA PRO_OBTEM_VERBA_RH.
+    --
+    -- SRD - 1436-Pagamento de Graduacao EAD
+    IF PI_IND_ENSINO_DISTANCIA = 'S' AND PI_QTD_HORAS_TEORICO <= 59 THEN
+      V_COD_VERBA_RH := V_TXT_PARAM_VRB_ATE59;
+    ELSIF PI_IND_ENSINO_DISTANCIA = 'S' AND PI_QTD_HORAS_TEORICO >= 60 THEN
+      V_COD_VERBA_RH := V_TXT_PARAM_VRB_ACIMA59;
+    ELSIF V_COD_VERBA_RH IS NULL THEN
+      V_COD_VERBA_RH := PRO_OBTEM_VERBA_RH(PI_COD_TIPO_CURSO, PI_COD_CAMPUS, NVL(PI_COD_CURSO, PI_COD_CURSO_EXTENSAO), PI_COD_TURNO, PI_IND_TIPO_CONTRATO, PI_COD_TIPO_RUBRICA, PI_COD_INSTITUICAO);
+    END IF;
+    --
+    -- 3. BUSCA O C DIGO DO CENTRO DE RESULTADO
+    --
+    V_POSICAO := 30;
+    --
+    V_COD_CENTRO_RESULTADO := PRO_OBTEM_CENTRO_RESULTADO(PI_COD_TIPO_CURSO, PI_COD_CAMPUS, NVL(PI_COD_CURSO, PI_COD_CURSO_EXTENSAO), PI_COD_TURNO, PI_NOM_PROCESSO, PI_COD_TIPO_ATUACAO, PI_COD_INSTITUICAO);
+    --
+    -- 4. INSERIR EM A_INTERFACE_PAGAMENTO
+    --
+    V_POSICAO := 40;
+    --
+    BEGIN
+      --
+      INSERT INTO SIA.A_INTERFACE_PAGAMENTO
+        (NUM_SEQ_MOVIMENTO
+        ,DT_MES_ANO_COMPETENCIA
+        ,CICLO
+        ,NOM_PROCESSO
+        ,IND_SITUACAO_PAGAMENTO
+        ,IND_DESTINO
+        ,IND_CURSO_EXTENSAO
+        ,COD_PROFESSOR
+        ,NUM_MATRICULA
+        ,COD_TIPO_CURSO
+        ,COD_CURSO
+        ,COD_CURSO_EXTENSAO
+        ,COD_CAMPUS
+        ,COD_TURNO
+        ,COD_TIPO_RUBRICA
+        ,QTD_HORAS_MOVIMENTO
+        ,VALOR_MOVIMENTO
+        ,DT_GERACAO
+        ,DT_LIBERACAO
+        ,DT_PROCESSAMENTO
+        ,NUM_SEQ_SOLICITACAO
+        ,NUM_SEQ_ALOCACAO
+        ,NUM_SEQ_ATUACAO
+        ,MES_ANO_ATUACAO
+        ,NUM_SEQ_FALTA
+        ,PERCENTUAL_APRIMORAMENTO
+        ,COD_BANCO
+        ,COD_AGENCIA
+        ,COD_AGENCIA_DV
+        ,COD_CONTA_CORRENTE
+        ,COD_CONTA_CORRENTE_DV
+        ,COD_CATEGORIA_PROFESSOR
+        ,NUM_SEQ_TURMA
+        ,COD_TURMA_EXTENSAO
+        ,COD_VERBA_RH
+        ,IND_TIPO_CONTRATO
+        ,COD_CENTRO_RESULTADO
+        ,COD_TIPO_ATUACAO
+        ,QTD_HORAS_TRABALHADAS
+        ,COD_INSTITUICAO
+        ,QTD_DIAS_TRABALHADOS)
+      VALUES
+        (SIA.S_INTERFACE_PAGAMENTO.NEXTVAL
+        ,PI_DT_COMPETENCIA
+        ,PI_PROXIMO_CICLO
+        ,PI_NOM_PROCESSO
+        ,PI_IND_SITUACAO_PAGAMENTO
+        ,PI_IND_DESTINO
+        ,PI_IND_CURSO_EXTENSAO
+        ,PI_COD_PROFESSOR
+        ,PI_NUM_MATRICULA
+        ,PI_COD_TIPO_CURSO
+        ,PI_COD_CURSO
+        ,PI_COD_CURSO_EXTENSAO
+        ,PI_COD_CAMPUS
+        ,PI_COD_TURNO
+        ,PI_COD_TIPO_RUBRICA
+        ,V_QTD_HORAS_MOVIMENTO
+        ,PI_VALOR_MOVIMENTO
+        ,PI_DT_GERACAO
+        ,PI_DT_LIBERACAO
+        ,PI_DT_PROCESSAMENTO
+        ,PI_NUM_SEQ_SOLICITACAO
+        ,PI_NUM_SEQ_ALOCACAO
+        ,PI_NUM_SEQ_ATUACAO
+        ,PI_MES_ANO_ATUACAO
+        ,PI_NUM_SEQ_FALTA
+        ,PI_PERCENTUAL_APRIMORAMENTO
+        ,PI_COD_BANCO
+        ,PI_COD_AGENCIA
+        ,PI_COD_AGENCIA_DV
+        ,PI_COD_CONTA_CORRENTE
+        ,PI_COD_CONTA_CORRENTE_DV
+        ,PI_COD_CATEGORIA_PROFESSOR
+        ,PI_NUM_SEQ_TURMA
+        ,PI_COD_TURMA_EXTENSAO
+        ,to_char(V_COD_VERBA_RH)
+        ,PI_IND_TIPO_CONTRATO
+        ,V_COD_CENTRO_RESULTADO
+        ,PI_COD_TIPO_ATUACAO
+        ,V_QTD_HORAS_TRABALHADAS
+        ,PI_COD_INSTITUICAO
+        ,PI_QTD_DIAS_TRABALHADOS);
+      --
+    EXCEPTION
+      WHEN OTHERS THEN
+        RAISE_APPLICATION_ERROR(-20100, SQLCODE || ' - ' || SQLERRM);
+    END;
+    --
+    -- REQ. 5607 -
+    -- 5 - REALIZA O RATEIO POR ALUNOS, SOMENTE SE EXISTIR TURMA
+    -- E O ALUNO FOR REGULAR E PARA O PROCESSO DE CARGA HORARIA
+    --
+    V_POSICAO := 50;
+    --
+--    PRO_GERA_RATEIO(PI_PROXIMO_CICLO, PI_DT_COMPETENCIA, PI_NOM_PROCESSO, PI_NUM_SEQ_TURMA, PI_NUM_MATRICULA, PI_COD_TIPO_RUBRICA, PI_IND_CURSO_EXTENSAO, PI_IND_ENSINO_DISTANCIA, PI_COD_TIPO_ATUACAO, PI_COD_INSTITUICAO, PO_IND_ERRO, PO_MSG_RETORNO);
+    --
+--    IF PO_IND_ERRO <> '0' THEN
+--      RAISE ERR_PREVISTO;
+--    END IF;
+    --
+    IF PI_COMMIT = 'S' THEN
+      COMMIT;
+    END IF;
+    --
+  EXCEPTION
+    WHEN ERR_PREVISTO THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-10' THEN
+          PO_MSG_RETORNO := 'ERRO NO AJUSTE DAS HORAS - PRO_APURACAO_ALOCACAO : ' || PO_MSG_RETORNO;
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO NA BUSCA DO CODIGO DA VERBA DO RH : ' || PO_MSG_RETORNO;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO NA BUSCA DO CODIGO DO CENTRO DE RESULTADO : ' || PO_MSG_RETORNO;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO INSERIR EM A_INTERFACE_PAGAMENTO : ' || PO_MSG_RETORNO;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO REALIZAR O RATEIO : ' || PO_MSG_RETORNO;
+        ELSE
+          PO_MSG_RETORNO := PO_MSG_RETORNO || ' - ERRO N O LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.GRAVA_ARQUIVO, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+    WHEN OTHERS THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-10' THEN
+          PO_MSG_RETORNO := 'ERRO NO AJUSTE DAS HORAS - PRO_APURACAO_ALOCACAO : ' || PO_MSG_RETORNO;
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO NA BUSCAR DO CODIGO DA VERBA DO RH : ' || V_SQLERRM;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO NA BUSCAR DO CODIGO DO CENTRO DE RESULTADO : ' || V_SQLERRM;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO INSERIR EM A_INTERFACE_PAGAMENTO : ' || V_SQLERRM;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO REALIZAR O RATEIO : ' || V_SQLERRM;
+        ELSE
+          PO_MSG_RETORNO := 'ERRO N O LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.GRAVA_ARQUIVO, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, V_TXT_PARAMETROS, ' Msg=> ' || PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+  END GRAVA_ARQUIVO;
+  --
+  -- CRIA UMA TABELA COM TODOS OS DIAS DO MÊS DA COMPETÊNCIA
+  PROCEDURE CARGA_A_CALENDARIO(P_DT_COMPETENCIA IN DATE) IS
+    --
+    I          NUMBER;
+    ULTIMO_DIA NUMBER;
+    --
+  BEGIN
+    --
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE SIA.A_CALENDARIO';
+    --
+    SELECT TO_CHAR(LAST_DAY(P_DT_COMPETENCIA), 'DD')
+      INTO ULTIMO_DIA
+      FROM DUAL;
+    --
+    IF ULTIMO_DIA >= 30
+    THEN
+      ULTIMO_DIA := 30;
+    END IF;
+    --
+    FOR I IN 1 .. ULTIMO_DIA
+    LOOP
+      --
+      INSERT INTO SIA.A_CALENDARIO
+        (COD_DIA_SEMANA
+        ,DT_DIA_MES)
+      VALUES
+        (TO_CHAR(TO_DATE(I || TO_CHAR(P_DT_COMPETENCIA, '/MM/YYYY'), 'DD/MM/YYYY'), 'D')
+        ,TO_DATE(I || TO_CHAR(P_DT_COMPETENCIA, '/MM/YYYY'), 'DD/MM/YYYY'));
+      --
+    END LOOP;
+    --
+    COMMIT;
+  EXCEPTION
+  WHEN OTHERS THEN
+      NULL;
+  END;
+
+
+  --
+  -- ALOCAÇÕES DAS TABELAS HORARIO_TURMA / HORARIO_TURMA_EXTENSAO / DATA_TURMA
+  --
+  PROCEDURE PRO_APURACAO_ALOCACAO(P_DT_COMPETENCIA          IN DATE
+                                 ,P_NUM_SEQ_DADOS_PROFESSOR IN VARCHAR2 DEFAULT NULL
+                                 ,P_COD_TIPO_CURSO          IN NUMBER DEFAULT NULL
+                                 ,P_COD_CAMPUS              IN NUMBER DEFAULT NULL
+                                 ,P_IND_TIPO_PROCESSO       IN VARCHAR2 DEFAULT NULL
+                                 ,P_IND_TIPO_CONTRATO       IN VARCHAR2 DEFAULT NULL
+                                 ,P_COD_USUARIO             IN VARCHAR2
+                                 ,P_COMMIT                  IN VARCHAR2
+                                 ,P_IND_ERRO                OUT VARCHAR2
+                                 ,P_MSG_RETORNO             OUT VARCHAR2
+                                 ,P_COD_INSTITUICAO         IN VARCHAR2) IS
+    --
+    -- P_IND_TIPO_PROCESSO  (G) GERAL
+    --                      (P) PARCIAL: CHAMADA ISOLADAMENTE
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+
+    V_PROF_EOF             BOOLEAN;
+    V_NUM_SEQ_ERRO         NUMBER(10);
+    --
+
+    V_ERRO_ORACLE VARCHAR2(500);
+    V_TXT_PARAMETROS          VARCHAR2(500);
+    V_POSICAO                 NUMBER(03);
+    V_CONT_HT                 INTEGER;
+    V_CONT_HTV                INTEGER;
+    V_CONT_HTE                INTEGER;
+    V_CONT_DT                 INTEGER;
+    V_CURSO_EXTENSAO          VARCHAR2(1);
+    V_DESTINO                 INTEGER;
+    V_CONT_DESTINO_RH         INTEGER;
+    V_CONT_DESTINO_FIN        INTEGER;
+    V_CONT_GRAVADOS_IP        INTEGER;
+    V_START                   DATE;
+    V_CONT_RUBRICA_CARGA_HR   INTEGER;
+    V_CONT_RUBRICA_AD_NOT     INTEGER;
+    V_QTD_CARGA_MENSAL        NUMBER(6,2);
+    V_QTD_CARGA_MENSAL_AD_NOT NUMBER(6,2);
+    V_QTD_CARGA_MENSAL_HR     NUMBER(6,2);
+
+    V_QTD_REG_LIDOS             PLS_INTEGER;
+    V_QTD_REG_GRAVADOS          PLS_INTEGER;
+    V_QTD_REG_DESPREZADOS       PLS_INTEGER;
+    V_QTDE_OUTROS_TP_CURSOS     PLS_INTEGER;
+    V_PROXIMO_CICLO             PLS_INTEGER;
+    V_ACHOU                     PLS_INTEGER;
+    V_COD_CURSO            NUMBER(10);
+    V_COD_CURSO_EXTENSAO   NUMBER(10);
+    V_QTDE_HORAS_MOVIMENTO NUMBER(6, 2);
+    V_NUM_SEQ_TURMA        NUMBER(10);
+    V_COD_TURMA_EXTENSAO   NUMBER(10);
+    V_COD_TIPO_RUBRICA     NUMBER(2);
+    V_QTD_DIAS_DIF         PLS_INTEGER;
+    V_DURACAO_TEMPO_AD_NOT PLS_INTEGER;
+    V_COD_INSTITUICAO_FILTRO NUMBER(6, 0);
+
+
+    PROCEDURE GRAVA_LOG(P_LINHA_LOG_IN   IN VARCHAR2
+                       ,P_COD_RETORNO_IN IN NUMBER) IS
+    BEGIN
+      --
+      ROLLBACK;
+      --
+      INSERT INTO SIA.LOG_INTERFACE_ARQUIVO
+        (NUM_SEQ_LOG
+        ,NOM_PROCESSO
+        ,NOM_ARQUIVO
+        ,COD_RETORNO
+        ,MSG_RETORNO
+        ,DT_INICIO_EXECUCAO
+        ,DT_FIM_EXECUCAO
+        ,NOM_DIRETORIO_ORIGEM
+        ,NOM_DIRETORIO_DESTINO
+        ,QTD_LIDOS
+        ,QTD_GRAVADOS
+        ,QTD_DESPREZADOS)
+      VALUES
+        (SIA.S_LOG_INTERFACE_ARQUIVO.NEXTVAL
+        ,'PRO_APURACAO_ALOCACAO' --'PRO_2_APURACAO_ALOCACAO'
+        ,'A_INTERFACE_PAGAMENTO'
+        ,P_COD_RETORNO_IN
+        ,P_LINHA_LOG_IN
+        ,V_START
+        ,SYSDATE
+        ,NULL
+        ,NULL
+        ,V_QTD_REG_LIDOS
+        ,V_QTD_REG_GRAVADOS
+        ,V_QTD_REG_DESPREZADOS);
+      --
+      COMMIT;
+      --
+    EXCEPTION
+      WHEN OTHERS THEN
+        --
+        P_MSG_RETORNO := 'FALHA AO INCLUIR EM LOG_INTERFACE_ARQUIVO.';
+        V_ERRO_ORACLE := SQLERRM;
+        --
+        SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_ALOCACAO.GRAVA_LOG', V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, P_MSG_RETORNO);
+        --
+        RAISE ERR_NAO_PREVISTO;
+        --
+    END GRAVA_LOG;
+    --
+    --
+    --
+  BEGIN
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        V_TXT_PARAMETROS := ' P_DT_COMPETENCIA   : ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || CHR(13) || ' P_NUM_SEQ_DADOS_PROFESSOR : ' || P_NUM_SEQ_DADOS_PROFESSOR || CHR(13) || ' P_COD_TIPO_CURSO   : ' || P_COD_TIPO_CURSO || CHR(13) || ' P_COD_CAMPUS       : ' || P_COD_CAMPUS || CHR(13) ||
+                            ' P_IND_TIPO_PROCESSO: ' || P_IND_TIPO_PROCESSO || CHR(13) || ' P_IND_TIPO_CONTRATO: ' || P_IND_TIPO_CONTRATO || CHR(13) || ' P_COD_INSTITUICAO  : ' || P_COD_INSTITUICAO;
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        V_START       := SYSDATE;
+        --V_DT_COMPETENCIA          := TRUNC(P_DT_COMPETENCIA,'MM');
+        V_QTD_REG_LIDOS           := 0;
+        V_QTD_REG_GRAVADOS        := 0;
+        V_QTDE_OUTROS_TP_CURSOS   := 0;
+        V_CURSO_EXTENSAO          := 'N';
+        V_CONT_HT                 := 0;
+        V_CONT_HTV                := 0;
+        V_CONT_DT                 := 0;
+        V_CONT_HTE                := 0;
+        V_DESTINO                 := 1;
+        V_CONT_DESTINO_RH         := 0;
+        V_CONT_DESTINO_FIN        := 0;
+        V_CONT_GRAVADOS_IP        := 0;
+        V_CONT_RUBRICA_CARGA_HR   := 0;
+        V_CONT_RUBRICA_AD_NOT     := 0;
+        V_QTD_CARGA_MENSAL_HR     := 0;
+        V_QTD_CARGA_MENSAL_AD_NOT := 0;
+        V_PROF_EOF                := TRUE;
+        --V_MAX_COMMIT              := 0;
+        --
+        -- 1. VALIDA PARÂMETROS OBRIGATÓRIOS
+        --
+        V_POSICAO := 10;
+        --
+        IF P_DT_COMPETENCIA IS NULL THEN
+          P_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        IF P_IND_TIPO_PROCESSO IS NULL THEN
+          P_MSG_RETORNO := 'O TIPO DE PROCESSO DEVE SER INFORMADO.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        -- ESTA VERIFICAÇÃO SE FAZ NECESSÁRIA PORQUE EXISTE UMA FK EM INTERFACE_PAGAMENTO
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_APURACAO_ALOCACAO';
+          --
+        EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'O PROCESSO "PRO_APURACAO_ALOCACAO" DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+
+        V_POSICAO := 11;
+        --
+        -- 1.1. CARREGA A TABELA TEMPORÁRIA COM OS DIAS DO MÊS DE COMPETÊNCIA
+        CARGA_A_CALENDARIO(P_DT_COMPETENCIA);
+
+        BEGIN
+          V_POSICAO := 13;
+          --
+          -- 1.3. OBTEM O PRÓXIMO CICLO DENTRO DE UMA COMPETÊNCIA PERTENCENTE A RUBRICA.
+          SELECT NVL(MAX(CICLO), 0) + 1
+            INTO V_PROXIMO_CICLO
+            FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+           WHERE DT_MES_ANO_COMPETENCIA = P_DT_COMPETENCIA
+             AND COD_INSTITUICAO = P_COD_INSTITUICAO
+             AND NOM_PROCESSO = 'PRO_APURACAO_ALOCACAO';
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            P_MSG_RETORNO := 'FALHA AO RECUPERAR O PRÓXIMO CICLO DE INTERFACE PAGAMENTO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+
+
+        V_POSICAO := 14;
+        --
+        -- 1.4. MONTA CURSOR COM OS PROFESSORES
+        FOR C_PROFESSOR IN ( SELECT DISTINCT P.NUM_SEQ_DADOS_PROFESSOR AS NUM_SEQ_DADOS_PROFESSOR
+                               FROM SIA.PROFESSOR         P
+                                  , SIA.PROFESSOR_REGIAO  PR
+                                  , SIA.CAMPUS            CA
+                              WHERE P.COD_PROFESSOR    = PR.COD_PROFESSOR
+                                AND PR.COD_REGIAO      = CA.COD_REGIAO
+                                AND CA.COD_INSTITUICAO = P_COD_INSTITUICAO
+                                AND P.NUM_SEQ_DADOS_PROFESSOR = NVL(P_NUM_SEQ_DADOS_PROFESSOR,P.NUM_SEQ_DADOS_PROFESSOR)
+                                AND P.IND_TIPO_CONTRATO = NVL(P_IND_TIPO_CONTRATO,P.IND_TIPO_CONTRATO)
+/*
+                             SELECT DP.NUM_SEQ_DADOS_PROFESSOR
+                               FROM SIA.DADOS_PROFESSOR DP
+                              WHERE DP.NUM_SEQ_DADOS_PROFESSOR = NVL(P_NUM_SEQ_DADOS_PROFESSOR,DP.NUM_SEQ_DADOS_PROFESSOR)
+                                AND EXISTS ( SELECT 1
+                                               FROM SIA.TURMA              TU
+                                                  , SIA.HORARIO_TURMA      HT
+                                                  , SIA.ALOCACAO_PROFESSOR AP
+                                                  , SIA.PROFESSOR          PR
+                                                  , SIA.CAMPUS             CA
+                                               WHERE TU.NUM_SEQ_TURMA            = HT.NUM_SEQ_TURMA
+                                                 AND AP.NUM_SEQ_HORARIO_TURMA    = HT.NUM_SEQ_HORARIO_TURMA
+                                                 AND AP.COD_PROFESSOR            = PR.COD_PROFESSOR
+                                                 AND PR.NUM_SEQ_DADOS_PROFESSOR  = DP.NUM_SEQ_DADOS_PROFESSOR
+                                                 AND TU.COD_CAMPUS               = CA.COD_CAMPUS
+                                                 AND CA.COD_INSTITUICAO          = P_COD_INSTITUICAO
+                                                 AND (P_COD_CAMPUS IS NULL OR TU.COD_CAMPUS = P_COD_CAMPUS)
+                                                 AND (P_IND_TIPO_CONTRATO IS NULL OR PR.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+                                                 AND TU.IND_ENSINO_DISTANCIA     = 'N'
+                                                 AND AP.IND_SUBSTITUICAO_PROF IS NULL
+                                                 AND TU.QTD_ALUNOS_MATRICULADOS > 0
+                                                 AND TU.IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+                                                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(AP.DT_INICIO_ALOCACAO, 'MM')
+                                                                                       AND TRUNC(AP.DT_FIM_ALOCACAO, 'MM') )
+*/
+        )LOOP
+
+            A_ALOCACAO.DELETE;
+            T_ALOCACAO.DELETE;
+            T_TURMA.DELETE;
+
+            --
+            -- CURSOR COM AS ALOCAÇÕES DO PROFESSOR
+            FOR C_ALOCACAO IN (
+            -- SELECIONA APENAS TURMAS PRESENCIAIS - PROJETO SEMIPRESENCIAL
+                               SELECT VAP.DIA_SEMANA
+                                    , VAP.TURNO_TEMPO
+                                    , VAP.TABELA
+                                    , VAP.COD_PROFESSOR
+                                    , VAP.NUM_SEQ_DADOS_PROFESSOR
+                                    , VAP.TIPO_CURSO COD_TIPO_CURSO
+                                    , VAP.DT_INI
+                                    , VAP.DT_FIM
+                                    , VAP.HORA_INI
+                                    , VAP.HORA_FIM
+                                    , VAP.IND_SUBSTITUICAO_PROF
+                                    , VAP.COD_CAMPUS
+                                    , VAP.COD_TURNO
+                                    , VAP.COD_CURSO
+                                    , VAP.DT_SUBSTITUICAO_PROF
+                                    , VAP.NUM_MATRICULA
+                                    , VAP.NUM_SEQ_PERIODO_ACADEMICO
+                                    , VAP.PK_TURMA
+                                    , VAP.NUM_SEQ_ALOCACAO
+                                    , VAP.IND_TIPO_CONTRATO
+                                    , VAP.PERCENTUAL_APRIMORAMENTO
+                                    , VAP.COD_BANCO
+                                    , VAP.COD_AGENCIA
+                                    , VAP.COD_AGENCIA_DV
+                                    , VAP.CONTA_CORRENTE
+                                    , VAP.CONTA_CORRENTE_DV
+                                    , VAP.COD_CATEGORIA_PROFESSOR
+                                    , VAP.CPF_PROFESSOR
+                                    , VAP.IND_ENSINO_DISTANCIA
+                                    , VAP.NUM_SEQ_COMPOSICAO
+                                    , VAP.HH_INICIO_AULA
+                                    , VAP.HH_FIM_AULA
+                                    , CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+                                    , VAP.COD_INSTITUICAO
+                                    , VAP.IND_TELEPRESENCIAL
+                                    , VAP.ID_TURNO
+                                    , VAP.DT_INICIO_ALOCACAO
+                                    , VAP.DT_FIM_ALOCACAO
+                                    , VAP.IND_MODALIDADE
+                              FROM SIA.V_ALOCACAO_PROFESSOR VAP
+                                  ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+                             WHERE TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(VAP.DT_INICIO_ALOCACAO, 'MM')
+                                                                     AND TRUNC(VAP.DT_FIM_ALOCACAO, 'MM')
+                               AND NVL(VAP.IND_SUBSTITUICAO_PROF, 'N') = 'N'
+                               AND NVL(VAP.QTD_ALUNOS_MATRICULADOS, 0) > 0
+                               --  /*10-09-2010*/
+                               AND VAP.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+                               AND VAP.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+                               AND VAP.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+                               AND VAP.COD_CAMPUS               = CT.COD_CAMPUS
+                               AND VAP.TIPO_CURSO               = CT.COD_TIPO_CURSO
+                               AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                                               AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+                               --  /*10-09-2010*/
+                               AND VAP.NUM_SEQ_DADOS_PROFESSOR         = C_PROFESSOR.NUM_SEQ_DADOS_PROFESSOR
+                               AND (P_COD_TIPO_CURSO IS NULL OR VAP.TIPO_CURSO = P_COD_TIPO_CURSO)
+                               AND (P_COD_CAMPUS IS NULL OR VAP.COD_CAMPUS = P_COD_CAMPUS)
+                               AND VAP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                               AND VAP.IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+                               --
+                               AND NVL(VAP.IND_PAGAMENTO_ALOCACAO,'S') = 'S' -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+                               --
+                               AND VAP.IND_MODALIDADE = 'P' -- SELECIONA APENAS TURMAS PRESENCIAIS - PROJETO SEMIPRESENCIAL
+                               --
+                               AND (P_IND_TIPO_CONTRATO IS NULL OR VAP.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+                               AND VAP.TABELA <> 'HTV'     -- MENOS TURMA VIRTUAL
+                               --
+                               -- BLOQUEIO DE PERMISSÃO DE PAGAMENTO PARA UMA DETERMINADA COMPETÊNCIA (MALUQUINHA)
+                               AND NOT EXISTS (SELECT 1
+                                                 FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+                                                WHERE VP.COD_TIPO_CURSO = VAP.TIPO_CURSO
+                                                  AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                                                  AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(VP.DT_INI_VIGENCIA, 'MM') AND TRUNC(VP.DT_FIM_VIGENCIA, 'MM')
+                                                  AND ((VP.COD_CURSO IS NULL AND VAP.COD_CURSO = VAP.COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VAP.COD_CURSO = VP.COD_CURSO)))
+                               --
+                               -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+                               AND VAP.IND_TIPO_SALARIO = 'H'
+                               --
+                               -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+                               AND NOT EXISTS (SELECT 1
+                                                 FROM SIA.ADMINISTRATIVO_RH ARH
+                                                WHERE ARH.NUM_MATRICULA = VAP.NUM_MATRICULA)
+          UNION
+          -- SELECIONA APENAS TURMAS SEMIPRESENCIAIS - PROJETO SEMIPRESENCIAL
+                               SELECT VAP.DIA_SEMANA
+                                    , VAP.TURNO_TEMPO
+                                    , VAP.TABELA
+                                    , VAP.COD_PROFESSOR
+                                    , VAP.NUM_SEQ_DADOS_PROFESSOR
+                                    , VAP.TIPO_CURSO COD_TIPO_CURSO
+                                    , VAP.DT_INI
+                                    , VAP.DT_FIM
+                                    , VAP.HORA_INI
+                                    , VAP.HORA_FIM
+                                    , VAP.IND_SUBSTITUICAO_PROF
+                                    , VAP.COD_CAMPUS_PAI COD_CAMPUS -- PROJETO SEMIPRESENCIAL
+                                    , VAP.COD_TURNO
+                                    , VAP.COD_CURSO
+                                    , VAP.DT_SUBSTITUICAO_PROF
+                                    , VAP.NUM_MATRICULA
+                                    , VAP.NUM_SEQ_PERIODO_ACADEMICO
+                                    , VAP.PK_TURMA
+                                    , VAP.NUM_SEQ_ALOCACAO
+                                    , VAP.IND_TIPO_CONTRATO
+                                    , VAP.PERCENTUAL_APRIMORAMENTO
+                                    , VAP.COD_BANCO
+                                    , VAP.COD_AGENCIA
+                                    , VAP.COD_AGENCIA_DV
+                                    , VAP.CONTA_CORRENTE
+                                    , VAP.CONTA_CORRENTE_DV
+                                    , VAP.COD_CATEGORIA_PROFESSOR
+                                    , VAP.CPF_PROFESSOR
+                                    , VAP.IND_ENSINO_DISTANCIA
+                                    , VAP.NUM_SEQ_COMPOSICAO
+                                    , VAP.HH_INICIO_AULA
+                                    , VAP.HH_FIM_AULA
+                                    , CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+                                    , VAP.COD_INSTITUICAO_PAI COD_INSTITUICAO -- PROJETO SEMIPRESENCIAL
+                                    , VAP.IND_TELEPRESENCIAL
+                                    , VAP.ID_TURNO
+                                    , VAP.DT_INICIO_ALOCACAO
+                                    , VAP.DT_FIM_ALOCACAO
+                                    , VAP.IND_MODALIDADE
+                              FROM SIA.V_ALOCACAO_PROFESSOR VAP
+                                  ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+                             WHERE TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(VAP.DT_INICIO_ALOCACAO, 'MM')
+                                                                     AND TRUNC(VAP.DT_FIM_ALOCACAO, 'MM')
+                               AND NVL(VAP.IND_SUBSTITUICAO_PROF, 'N') = 'N'
+
+                               AND NVL(VAP.QTD_ALUNOS_MATRICULADOS, 0) > 0
+                               --  /*10-09-2010*/
+                               AND VAP.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+                               AND VAP.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+                               AND VAP.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+                               AND VAP.COD_CAMPUS               = CT.COD_CAMPUS
+                               AND VAP.TIPO_CURSO               = CT.COD_TIPO_CURSO
+                               AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                                               AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+                               --  /*10-09-2010*/
+                               AND VAP.NUM_SEQ_DADOS_PROFESSOR  = C_PROFESSOR.NUM_SEQ_DADOS_PROFESSOR
+                               AND (P_COD_TIPO_CURSO IS NULL OR VAP.TIPO_CURSO = P_COD_TIPO_CURSO)
+                               AND (P_COD_CAMPUS IS NULL OR VAP.COD_CAMPUS_PAI = P_COD_CAMPUS) -- PROJETO SEMIPRESENCIAL
+                               AND VAP.COD_INSTITUICAO_PAI      = P_COD_INSTITUICAO -- PROJETO SEMIPRESENCIAL
+                               AND VAP.IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+                               --
+                               AND NVL(VAP.IND_PAGAMENTO_ALOCACAO,'S') = 'S' -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+                               --
+                               AND VAP.IND_MODALIDADE = 'S' -- SELECIONA APENAS TURMAS SEMIPRESENCIAIS - PROJETO SEMIPRESENCIAL
+                               --
+                               AND (P_IND_TIPO_CONTRATO IS NULL OR VAP.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+                               AND VAP.TABELA <> 'HTV'     -- MENOS TURMA VIRTUAL
+                               --
+                               -- BLOQUEIO DE PERMISSÃO DE PAGAMENTO PARA UMA DETERMINADA COMPETÊNCIA (MALUQUINHA)
+                               AND NOT EXISTS (SELECT 1
+                                                 FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+                                                WHERE VP.COD_TIPO_CURSO = VAP.TIPO_CURSO
+                                                  AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                                                  AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(VP.DT_INI_VIGENCIA, 'MM') AND TRUNC(VP.DT_FIM_VIGENCIA, 'MM')
+                                                  AND ((VP.COD_CURSO IS NULL AND VAP.COD_CURSO = VAP.COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VAP.COD_CURSO = VP.COD_CURSO)))
+                               --
+                               -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+                               AND VAP.IND_TIPO_SALARIO = 'H'
+                               --
+                               -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+                               AND NOT EXISTS (SELECT 1
+                                                 FROM SIA.ADMINISTRATIVO_RH ARH
+                                                WHERE ARH.NUM_MATRICULA = VAP.NUM_MATRICULA)
+                               ORDER BY IND_MODALIDADE
+            )LOOP
+                 V_PROF_EOF := FALSE;
+                 --
+                 -- CURSOR COM OS DIAS DO MES COM ALOCACAO
+                 FOR C_CALENDARIO IN ( SELECT CA.DT_DIA_MES
+                                         FROM SIA.A_CALENDARIO  CA
+                                        WHERE CA.DT_DIA_MES BETWEEN C_ALOCACAO.DT_INICIO_ALOCACAO
+                                                                AND C_ALOCACAO.DT_FIM_ALOCACAO
+                 )LOOP
+                      --
+                      -- CASO EM QUE O PROFESSOR NÃO POSSUI CONFLITO
+                      IF NOT VALID_ALOCACAO(C_ALOCACAO.IND_TELEPRESENCIAL
+                                          , C_ALOCACAO.DIA_SEMANA
+                                          , C_CALENDARIO.DT_DIA_MES
+                                          , C_ALOCACAO.HH_INICIO_AULA
+                                          , C_ALOCACAO.HH_FIM_AULA) THEN
+
+                          --
+                          -- CARREGA O HORARIO COMO PAGO
+                          SET_PAGAMENTO(C_ALOCACAO.IND_TELEPRESENCIAL
+                                      , C_ALOCACAO.NUM_SEQ_ALOCACAO
+                                      , C_ALOCACAO.DIA_SEMANA
+                                      , C_CALENDARIO.DT_DIA_MES
+                                      , C_ALOCACAO.HH_INICIO_AULA
+                                      , C_ALOCACAO.HH_FIM_AULA
+                                      , C_ALOCACAO.VAL_HORA_AULA
+                                      , C_ALOCACAO.TABELA
+                                      , C_ALOCACAO.COD_PROFESSOR
+                                      , C_ALOCACAO.NUM_MATRICULA
+                                      , C_ALOCACAO.DT_INICIO_ALOCACAO
+                                      , C_ALOCACAO.DT_FIM_ALOCACAO
+                                      , C_ALOCACAO.PERCENTUAL_APRIMORAMENTO
+                                      , C_ALOCACAO.COD_CAMPUS
+                                      , C_ALOCACAO.COD_TIPO_CURSO
+                                      , C_ALOCACAO.COD_CURSO
+                                      , C_ALOCACAO.COD_TURNO
+                                      , C_ALOCACAO.ID_TURNO
+                                      , C_ALOCACAO.COD_BANCO
+                                      , C_ALOCACAO.COD_AGENCIA
+                                      , C_ALOCACAO.COD_AGENCIA_DV
+                                      , C_ALOCACAO.CONTA_CORRENTE
+                                      , C_ALOCACAO.CONTA_CORRENTE_DV
+                                      , C_ALOCACAO.COD_CATEGORIA_PROFESSOR
+                                      , C_ALOCACAO.PK_TURMA
+                                      , C_ALOCACAO.IND_TIPO_CONTRATO );
+                    END IF;
+
+                 END LOOP; --C_CALENDARIO
+
+            END LOOP; -- C_ALOCACAO
+
+            --
+            -- PAGA AS TURMAS
+            FOR I IN 1..T_TURMA.COUNT
+            LOOP
+                  V_NUM_SEQ_ERRO := T_TURMA(I).NUM_SEQ_ALOCACAO;
+
+                  --
+                  BEGIN
+                          --
+                          -- ATUALIZA CONTADORES
+                          --
+                          V_POSICAO := 20;
+                          --
+                          V_CURSO_EXTENSAO := 'N';
+                          --
+                          IF T_TURMA(I).TABELA = 'HT' THEN
+                            V_CONT_HT := V_CONT_HT + 1;
+                          ELSIF T_TURMA(I).TABELA = 'HTV' THEN
+                            V_CONT_HTV := V_CONT_HTV + 1;
+                          ELSIF T_TURMA(I).TABELA = 'DT' THEN
+                            V_CONT_DT := V_CONT_DT + 1;
+                          ELSIF T_TURMA(I).TABELA = 'HTE' THEN
+                            V_CONT_HTE       := V_CONT_HTE + 1;
+                            V_CURSO_EXTENSAO := 'S';
+                          ELSE
+                            P_MSG_RETORNO := 'NÃO EXISTE UMA TABELA ASSOCIADA A AULA: ' || T_TURMA(I).TABELA;
+                            RAISE ERR_PREVISTO;
+                          END IF;
+                          --
+                          V_POSICAO := 21;
+                          IF T_TURMA(I).IND_TIPO_CONTRATO IN ('F', 'S') THEN
+                            V_DESTINO         := 1;
+                            V_CONT_DESTINO_RH := V_CONT_DESTINO_RH + 1;
+                          ELSIF T_TURMA(I).IND_TIPO_CONTRATO = 'P' THEN
+                            V_DESTINO          := 2;
+                            V_CONT_DESTINO_FIN := V_CONT_DESTINO_FIN + 1;
+                          END IF;
+
+                          --
+                          V_POSICAO := 22;
+                          IF T_TURMA(I).IND_TELEPRESENCIAL = 'S' THEN
+                            V_POSICAO := 23;
+                            IF T_TURMA(I).ID_TURNO IN (1,2) THEN
+                              V_COD_TIPO_RUBRICA := 43;
+                            ELSE
+                              V_COD_TIPO_RUBRICA := 42;
+                            END IF;
+                          ELSE
+                            V_COD_TIPO_RUBRICA := 1; -- CARGA HORÁRIA
+                          END IF;
+
+                          V_CONT_RUBRICA_CARGA_HR := V_CONT_RUBRICA_CARGA_HR + 1;
+                          --
+                          -- 2. CALCULA QTD DE A PAGAR. INTEGRAL
+                          V_POSICAO := 23;
+                          IF T_TURMA(I).QTD_DIA_TRABALHADO >= 30 OR
+                             (TO_CHAR(P_DT_COMPETENCIA, 'MM') = 2 AND TO_CHAR(LAST_DAY(P_DT_COMPETENCIA), 'DD') = T_TURMA(I).QTD_DIA_TRABALHADO)
+                          THEN
+                            --
+                            -- CALCULA QTD DE A PAGAR. PROPORCIONAL
+                            V_QTD_DIAS_DIF := 0;
+                            --
+                            -- SE O MÊS DA DATA INICIAL FOR FEVEREIRO E
+                            -- SE FOR DO MESMO ANO DE COMPETENCIA E
+                            -- SE A DATA FINAL EXTRAPOLAR O MES DE COMPETENCIA ENTÃO CALCULA A DIFERENÇA PARA 30 DIAS
+                            --
+                            IF TO_CHAR(T_TURMA(I).DT_INI_ALOCACAO, 'MM') = '02' AND
+                               TO_CHAR(T_TURMA(I).DT_INI_ALOCACAO, 'YYYY') = TO_CHAR(P_DT_COMPETENCIA, 'YYYY') AND
+                               T_TURMA(I).DT_FIM_ALOCACAO >= LAST_DAY(P_DT_COMPETENCIA)
+                            THEN
+                              V_QTD_DIAS_DIF := 30 - TO_NUMBER(TO_CHAR(LAST_DAY(T_TURMA(I).DT_INI_ALOCACAO), 'DD'));
+                            END IF;
+                            --
+                            T_TURMA(I).QTD_DIA_TRABALHADO := T_TURMA(I).QTD_DIA_TRABALHADO + V_QTD_DIAS_DIF;
+                            --
+                            IF T_TURMA(I).QTD_DIA_TRABALHADO > 30 THEN
+                              T_TURMA(I).QTD_DIA_TRABALHADO := 30;
+                            END IF;
+                            --
+                            V_POSICAO := 25;
+                            V_QTD_CARGA_MENSAL := 4.5 * T_TURMA(I).VAL_HORA_AULA;
+                            --
+                            -- 2.1. ATUALIZA A_INTERFACE_PAGAMENTO P/ CALCULA QTD DE A PAGAR. INTEGRAL
+                            --
+                            V_POSICAO := 31;
+                            SELECT DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).COD_CURSO)
+                                  ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).COD_CURSO, NULL)
+                                  ,DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).NUM_SEQ_TURMA)
+                                  ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).NUM_SEQ_TURMA, NULL)
+                                  ,DECODE(V_COD_TIPO_RUBRICA, 1, V_QTD_CARGA_MENSAL, 42, V_QTD_CARGA_MENSAL, 43, V_QTD_CARGA_MENSAL, V_QTD_CARGA_MENSAL_AD_NOT)
+                              INTO V_COD_CURSO
+                                  ,V_COD_CURSO_EXTENSAO
+                                  ,V_NUM_SEQ_TURMA
+                                  ,V_COD_TURMA_EXTENSAO
+                                  ,V_QTDE_HORAS_MOVIMENTO
+                              FROM DUAL;
+                            --
+                            GRAVA_ARQUIVO(V_COD_TIPO_RUBRICA                       -- PI_COD_TIPO_RUBRICA
+                                         , P_DT_COMPETENCIA                        -- PI_DT_COMPETENCIA           (V_DT_COMPETENCIA)
+                                         , V_PROXIMO_CICLO                         -- PI_PROXIMO_CICLO
+                                         , 'PRO_APURACAO_ALOCACAO'                 -- PI_NOM_PROCESSO
+                                         , '1'                                     -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                                         , V_DESTINO                               -- PI_IND_DESTINO
+                                         , V_CURSO_EXTENSAO                        -- PI_IND_CURSO_EXTENSAO
+                                         , T_TURMA(I).COD_PROFESSOR                -- PI_COD_PROFESSOR
+                                         , T_TURMA(I).NUM_MATRICULA                -- PI_NUM_MATRICULA
+                                         , T_TURMA(I).COD_TIPO_CURSO               -- PI_COD_TIPO_CURSO
+                                         , V_COD_CURSO                             -- PI_COD_CURSO
+                                         , V_COD_CURSO_EXTENSAO                    -- PI_COD_CURSO_EXTENSAO
+                                         , T_TURMA(I).COD_CAMPUS                   -- PI_COD_CAMPUS
+                                         , T_TURMA(I).COD_TURNO                    -- PI_COD_TURNO
+                                         , V_QTDE_HORAS_MOVIMENTO                  -- PI_QTD_HORAS_MOVIMENTO
+                                         , NULL                                    -- PI_VALOR_MOVIMENTO
+                                         , SYSDATE                                 -- PI_DT_GERACAO
+                                         , NULL                                    -- PI_DT_LIBERACAO
+                                         , NULL                                    -- PI_DT_PROCESSAMENTO
+                                         , NULL                                    -- PI_NUM_SEQ_SOLICITACAO
+                                         , T_TURMA(I).NUM_SEQ_ALOCACAO             -- PI_NUM_SEQ_ALOCACAO
+                                         , NULL                                    -- PI_NUM_SEQ_ATUACAO
+                                         , NULL                                    -- PI_MES_ANO_ATUACAO
+                                         , NULL                                    -- PI_NUM_SEQ_FALTA
+                                         , T_TURMA(I).APRIMORAMENTO                -- PI_PERCENTUAL_APRIMORAMENTO
+                                         , T_TURMA(I).COD_BANCO                    -- PI_COD_BANCO
+                                         , T_TURMA(I).COD_AGENCIA                  -- PI_COD_AGENCIA
+                                         , T_TURMA(I).COD_AGENCIA_DV               -- PI_COD_AGENCIA_DV
+                                         , T_TURMA(I).CONTA_CORRENTE               -- PI_COD_CONTA_CORRENTE
+                                         , T_TURMA(I).CONTA_CORRENTE_DV            -- PI_COD_CONTA_CORRENTE_DV
+                                         , T_TURMA(I).COD_CATEGORIA_PROFESSOR      -- PI_COD_CATEGORIA_PROFESSOR
+                                         , V_NUM_SEQ_TURMA                         -- PI_NUM_SEQ_TURMA
+                                         , V_COD_TURMA_EXTENSAO                    -- PI_COD_TURMA_EXTENSAO
+                                         , T_TURMA(I).IND_TIPO_CONTRATO            -- PI_IND_TIPO_CONTRATO
+                                         , P_COD_INSTITUICAO                       -- PI_COD_INSTITUICAO
+                                         , 'N'                                     -- PI_COMMIT
+                                         , P_IND_ERRO                              -- PO_IND_ERRO
+                                         , P_MSG_RETORNO                           -- PO_MSG_RETORNO
+                                         , NULL                                    -- PI_COD_TIPO_ATUACAO
+                                         , V_QTDE_HORAS_MOVIMENTO                  -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                                         , 'N'                                     -- PI_IND_ENSINO_DISTANCIA
+                                         , T_TURMA(I).QTD_DIA_TRABALHADO           -- PI_QTD_DIAS_TRABALHADOS
+                                         , NULL);                                  -- PI_QTD_HORAS_TEORICO
+                            --
+                            IF P_IND_ERRO <> '0' THEN
+                              RAISE_APPLICATION_ERROR(-20010, P_IND_ERRO || ' - ' || P_MSG_RETORNO);
+                            END IF;
+                            --
+                            V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+                            --
+                            -- ADICIONAL NOTURNO FORMULA (((30/60)*4.5)/30) * TOTAL DE DIAS
+                            --
+                            -- IF R_AP.TURNO_TEMPO IN (35, 36) AND R_AP.IND_TELEPRESENCIAL = 'N' -- ALTERAÇÃO TURMA TELEPRESENCIAL
+                            -- ALTERAÇÃO PARA PAGAMENTO DE ADICIONAL NOTURNO
+                            IF T_TURMA(I).IND_TELEPRESENCIAL = 'N' THEN
+                              --
+                              IF TO_CHAR(T_TURMA(I).HH_FIM_AULA, 'HH24:MI') > '22:00' THEN
+                                --
+                                BEGIN
+                                  --
+                                  -- VERIFICA SE O PAGAMENTO DE ADICIONAL NOTURNO É PERMITIDO (CALCULA QTO PASSOU DE 22:00)
+                                  V_COD_TIPO_RUBRICA     := 2;
+                                  V_DURACAO_TEMPO_AD_NOT := (TO_NUMBER(T_TURMA(I).HH_FIM_AULA - (CASE WHEN TO_CHAR(T_TURMA(I).HH_INI_AULA, 'HH24MM') < '2200' THEN TO_DATE(TO_CHAR(T_TURMA(I).HH_INI_AULA, 'DD/MM/YYYY') || '22:00', 'DD/MM/YYYYHH24:MI') ELSE T_TURMA(I).HH_INI_AULA END)) * 3600 * 24) / 60;
+                                  V_CONT_RUBRICA_AD_NOT  := V_CONT_RUBRICA_AD_NOT + 1;
+                                  --
+                                  V_QTD_CARGA_MENSAL_AD_NOT := ((V_DURACAO_TEMPO_AD_NOT / 60) * 4.5);
+                                  --
+                                  V_POSICAO := 32;
+                                  --
+                                  -- 2.1. ATUALIZA A_INTERFACE_PAGAMENTO P/ INTEGRAL - ADICIONAL NOTURNO FORMULA (((30/60)*4.5)/30) * TOTAL DE DIAS
+                                  --
+                                  SELECT DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).COD_CURSO)
+                                        ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).COD_CURSO, NULL)
+                                        ,DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).NUM_SEQ_TURMA)
+                                        ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).NUM_SEQ_TURMA, NULL)
+                                        ,DECODE(V_COD_TIPO_RUBRICA, 1, V_QTD_CARGA_MENSAL, 42, V_QTD_CARGA_MENSAL, 43, V_QTD_CARGA_MENSAL, V_QTD_CARGA_MENSAL_AD_NOT)
+                                    INTO V_COD_CURSO
+                                        ,V_COD_CURSO_EXTENSAO
+                                        ,V_NUM_SEQ_TURMA
+                                        ,V_COD_TURMA_EXTENSAO
+                                        ,V_QTDE_HORAS_MOVIMENTO
+                                    FROM DUAL;
+                                  --
+                                  GRAVA_ARQUIVO(V_COD_TIPO_RUBRICA                 -- PI_COD_TIPO_RUBRICA
+                                               , P_DT_COMPETENCIA                  -- PI_DT_COMPETENCIA           (V_DT_COMPETENCIA)
+                                               , V_PROXIMO_CICLO                   -- PI_PROXIMO_CICLO
+                                               , 'PRO_APURACAO_ALOCACAO'           -- PI_NOM_PROCESSO
+                                               , '1'                               -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                                               , V_DESTINO                         -- PI_IND_DESTINO
+                                               , V_CURSO_EXTENSAO                  -- PI_IND_CURSO_EXTENSAO
+                                               , T_TURMA(I).COD_PROFESSOR          -- PI_COD_PROFESSOR
+                                               , T_TURMA(I).NUM_MATRICULA          -- PI_NUM_MATRICULA
+                                               , T_TURMA(I).COD_TIPO_CURSO         -- PI_COD_TIPO_CURSO
+                                               , V_COD_CURSO                       -- PI_COD_CURSO
+                                               , V_COD_CURSO_EXTENSAO              -- PI_COD_CURSO_EXTENSAO
+                                               , T_TURMA(I).COD_CAMPUS             -- PI_COD_CAMPUS
+                                               , T_TURMA(I).COD_TURNO              -- PI_COD_TURNO
+                                               , V_QTDE_HORAS_MOVIMENTO            -- PI_QTD_HORAS_MOVIMENTO
+                                               , NULL                              -- PI_VALOR_MOVIMENTO
+                                               , SYSDATE                           -- PI_DT_GERACAO
+                                               , NULL                              -- PI_DT_LIBERACAO
+                                               , NULL                              -- PI_DT_PROCESSAMENTO
+                                               , NULL                              -- PI_NUM_SEQ_SOLICITACAO
+                                               , T_TURMA(I).NUM_SEQ_ALOCACAO       -- PI_NUM_SEQ_ALOCACAO
+                                               , NULL                              -- PI_NUM_SEQ_ATUACAO
+                                               , NULL                              -- PI_MES_ANO_ATUACAO
+                                               , NULL                              -- PI_NUM_SEQ_FALTA
+                                               , T_TURMA(I).APRIMORAMENTO          -- PI_PERCENTUAL_APRIMORAMENTO
+                                               , T_TURMA(I).COD_BANCO              -- PI_COD_BANCO
+                                               , T_TURMA(I).COD_AGENCIA            -- PI_COD_AGENCIA
+                                               , T_TURMA(I).COD_AGENCIA_DV         -- PI_COD_AGENCIA_DV
+                                               , T_TURMA(I).CONTA_CORRENTE         -- PI_COD_CONTA_CORRENTE
+                                               , T_TURMA(I).CONTA_CORRENTE_DV      -- PI_COD_CONTA_CORRENTE_DV
+                                               , T_TURMA(I).COD_CATEGORIA_PROFESSOR -- PI_COD_CATEGORIA_PROFESSOR
+                                               , V_NUM_SEQ_TURMA                   -- PI_NUM_SEQ_TURMA
+                                               , V_COD_TURMA_EXTENSAO              -- PI_COD_TURMA_EXTENSAO
+                                               , T_TURMA(I).IND_TIPO_CONTRATO      -- PI_IND_TIPO_CONTRATO
+                                               , P_COD_INSTITUICAO                 -- PI_COD_INSTITUICAO
+                                               , 'N'                               -- PI_COMMIT
+                                               , P_IND_ERRO                        -- PO_IND_ERRO
+                                               , P_MSG_RETORNO                     -- PO_MSG_RETORNO
+                                               , NULL                              -- PI_COD_TIPO_ATUACAO
+                                               , NULL                              -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                                               , 'N'                               -- PI_IND_ENSINO_DISTANCIA
+                                               , T_TURMA(I).QTD_DIA_TRABALHADO     -- PI_QTD_DIAS_TRABALHADOS
+                                               , NULL);                            -- PI_QTD_HORAS_TEORICO
+                                  --
+                                  IF P_IND_ERRO <> '0' THEN
+                                    RAISE_APPLICATION_ERROR(-20010, P_IND_ERRO || ' - ' || P_MSG_RETORNO);
+                                  END IF;
+                                  --
+                                  V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+                                  --
+                                EXCEPTION
+                                WHEN NO_DATA_FOUND THEN
+                                    NULL;
+                                END;
+                                --
+                              END IF; -- IF TO_CHAR(R_AP.HH_FIM_AULA,'HH24MM') >'2200' THEN
+                              --
+                            END IF; -- R_AP.TURNO_TEMPO IN (35, 36) AND R_AP.IND_TELEPRESENCIAL = 'N'
+                            --
+                          ELSE
+                            --
+                            -- CALCULA QTD DE A PAGAR. PROPORCIONAL
+                            V_QTD_DIAS_DIF := 0;
+                            --
+                            -- SE O MÊS DA DATA INICIAL FOR FEVEREIRO E
+                            -- SE FOR DO MESMO ANO DE COMPETENCIA E
+                            -- SE A DATA FINAL EXTRAPOLAR O MES DE COMPETENCIA ENTÃO CALCULA A DIFERENÇA PARA 30 DIAS
+                            --
+                            IF TO_CHAR(T_TURMA(I).DT_INI_ALOCACAO, 'MM') = '02' AND
+                               TO_CHAR(T_TURMA(I).DT_INI_ALOCACAO, 'YYYY') = TO_CHAR(P_DT_COMPETENCIA, 'YYYY') AND
+                               T_TURMA(I).DT_FIM_ALOCACAO >= LAST_DAY(P_DT_COMPETENCIA)
+                            THEN
+                              V_QTD_DIAS_DIF := 30 - TO_NUMBER(TO_CHAR(LAST_DAY(T_TURMA(I).DT_INI_ALOCACAO), 'DD'));
+                            END IF;
+                            --
+                            T_TURMA(I).QTD_DIA_TRABALHADO := T_TURMA(I).QTD_DIA_TRABALHADO + V_QTD_DIAS_DIF;
+                            --
+                            IF T_TURMA(I).QTD_DIA_TRABALHADO > 30
+                            THEN
+                              T_TURMA(I).QTD_DIA_TRABALHADO := 30;
+                            END IF;
+                            --
+                            V_QTD_CARGA_MENSAL := (T_TURMA(I).QTD_DIA_TRABALHADO * 0.15) * T_TURMA(I).VAL_HORA_AULA;
+                            --
+                            -- 3.1. ATUALIZA A_INTERFACE_PAGAMENTO P/ CALCULA QTD DE A PAGAR. PROPORCIONAL
+                            --
+                            V_POSICAO := 33;
+                            --
+                            SELECT DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).COD_CURSO)
+                                  ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).COD_CURSO, NULL)
+                                  ,DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).NUM_SEQ_TURMA)
+                                  ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).NUM_SEQ_TURMA, NULL)
+                                  ,DECODE(V_COD_TIPO_RUBRICA, 1, V_QTD_CARGA_MENSAL, 42, V_QTD_CARGA_MENSAL, 43, V_QTD_CARGA_MENSAL, V_QTD_CARGA_MENSAL_AD_NOT)
+                              INTO V_COD_CURSO
+                                  ,V_COD_CURSO_EXTENSAO
+                                  ,V_NUM_SEQ_TURMA
+                                  ,V_COD_TURMA_EXTENSAO
+                                  ,V_QTDE_HORAS_MOVIMENTO
+                              FROM DUAL;
+                            --
+                            GRAVA_ARQUIVO(V_COD_TIPO_RUBRICA                       -- PI_COD_TIPO_RUBRICA
+                                         , P_DT_COMPETENCIA                        -- PI_DT_COMPETENCIA           (V_DT_COMPETENCIA)
+                                         , V_PROXIMO_CICLO                         -- PI_PROXIMO_CICLO
+                                         , 'PRO_APURACAO_ALOCACAO'                 -- PI_NOM_PROCESSO
+                                         , '1'                                     -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                                         , V_DESTINO                               -- PI_IND_DESTINO
+                                         , V_CURSO_EXTENSAO                        -- PI_IND_CURSO_EXTENSAO
+                                         , T_TURMA(I).COD_PROFESSOR                -- PI_COD_PROFESSOR
+                                         , T_TURMA(I).NUM_MATRICULA                -- PI_NUM_MATRICULA
+                                         , T_TURMA(I).COD_TIPO_CURSO               -- PI_COD_TIPO_CURSO
+                                         , V_COD_CURSO                             -- PI_COD_CURSO
+                                         , V_COD_CURSO_EXTENSAO                    -- PI_COD_CURSO_EXTENSAO
+                                         , T_TURMA(I).COD_CAMPUS                   -- PI_COD_CAMPUS
+                                         , T_TURMA(I).COD_TURNO                    -- PI_COD_TURNO
+                                         , V_QTDE_HORAS_MOVIMENTO                  -- PI_QTD_HORAS_MOVIMENTO
+                                         , NULL                                    -- PI_VALOR_MOVIMENTO
+                                         , SYSDATE                                 -- PI_DT_GERACAO
+                                         , NULL                                    -- PI_DT_LIBERACAO
+                                         , NULL                                    -- PI_DT_PROCESSAMENTO
+                                         , NULL                                    -- PI_NUM_SEQ_SOLICITACAO
+                                         , T_TURMA(I).NUM_SEQ_ALOCACAO             -- PI_NUM_SEQ_ALOCACAO
+                                         , NULL                                    -- PI_NUM_SEQ_ATUACAO
+                                         , NULL                                    -- PI_MES_ANO_ATUACAO
+                                         , NULL                                    -- PI_NUM_SEQ_FALTA
+                                         , T_TURMA(I).APRIMORAMENTO                -- PI_PERCENTUAL_APRIMORAMENTO
+                                         , T_TURMA(I).COD_BANCO                    -- PI_COD_BANCO
+                                         , T_TURMA(I).COD_AGENCIA                  -- PI_COD_AGENCIA
+                                         , T_TURMA(I).COD_AGENCIA_DV               -- PI_COD_AGENCIA_DV
+                                         , T_TURMA(I).CONTA_CORRENTE               -- PI_COD_CONTA_CORRENTE
+                                         , T_TURMA(I).CONTA_CORRENTE_DV            -- PI_COD_CONTA_CORRENTE_DV
+                                         , T_TURMA(I).COD_CATEGORIA_PROFESSOR      -- PI_COD_CATEGORIA_PROFESSOR
+                                         , V_NUM_SEQ_TURMA                         -- PI_NUM_SEQ_TURMA
+                                         , V_COD_TURMA_EXTENSAO                    -- PI_COD_TURMA_EXTENSAO
+                                         , T_TURMA(I).IND_TIPO_CONTRATO            -- PI_IND_TIPO_CONTRATO
+                                         , P_COD_INSTITUICAO                       -- PI_COD_INSTITUICAO
+                                         , 'N'                                     -- PI_COMMIT
+                                         , P_IND_ERRO                              -- PO_IND_ERRO
+                                         , P_MSG_RETORNO                           -- PO_MSG_RETORNO
+                                         , NULL                                    -- PI_COD_TIPO_ATUACAO
+                                         , V_QTDE_HORAS_MOVIMENTO                  -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                                         , 'N'                                     -- PI_IND_ENSINO_DISTANCIA
+                                         , T_TURMA(I).QTD_DIA_TRABALHADO           -- PI_QTD_DIAS_TRABALHADOS
+                                         , NULL);                                  -- PI_QTD_HORAS_TEORICO
+                            --
+                            IF P_IND_ERRO <> '0'  THEN
+                              RAISE_APPLICATION_ERROR(-20010, P_IND_ERRO || ' - ' || P_MSG_RETORNO);
+                            END IF;
+                            --
+                            V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+                            --
+                            -- ADICIONAL NOTURNO FORMULA (((30/60)*4.5)/30) * TOTAL DE DIAS
+                            --
+                            --IF R_AP.TURNO_TEMPO IN (35, 36) AND R_AP.IND_TELEPRESENCIAL = 'N' -- ALTERAÇÃO TURMA TELEPRESENCIAL
+                            -- ALTERAÇÃO PARA PAGAMENTO DE ADICIONAL NOTURNO
+                            IF T_TURMA(I).IND_TELEPRESENCIAL = 'N' THEN
+                              --
+                              IF TO_CHAR(T_TURMA(I).HH_FIM_AULA, 'HH24:MI') > '22:00' THEN
+                                --
+                                BEGIN
+                                  V_POSICAO := 33;
+                                  --
+                                  -- VERIFICA SE O PAGAMENTO DE ADICIONAL NOTURNO É PERMITIDO
+                                  V_COD_TIPO_RUBRICA     := 2;
+                                  V_DURACAO_TEMPO_AD_NOT := (TO_NUMBER(T_TURMA(I).HH_FIM_AULA - (CASE WHEN TO_CHAR(T_TURMA(I).HH_INI_AULA, 'HH24MM') < '2200' THEN TO_DATE(TO_CHAR(T_TURMA(I).HH_INI_AULA, 'DD/MM/YYYY') || '22:00', 'DD/MM/YYYYHH24:MI') ELSE T_TURMA(I).HH_INI_AULA END)) * 3600 * 24) / 60; -- CALCULA QTO PASSOU DE 22:00
+                                  V_CONT_RUBRICA_AD_NOT  := V_CONT_RUBRICA_AD_NOT + 1;
+                                  --
+                                  V_QTD_CARGA_MENSAL_AD_NOT := (((V_DURACAO_TEMPO_AD_NOT / 60) * 4.5) / 30) * T_TURMA(I).QTD_DIA_TRABALHADO;
+                                  --
+                                  -- 3.2. ATUALIZA A_INTERFACE_PAGAMENTO P/ ADICIONAL NOTURNO FORMULA (((30/60)*4.5)/30) * TOTAL DE DIAS
+                                  SELECT DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).COD_CURSO)
+                                        ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).COD_CURSO, NULL)
+                                        ,DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).NUM_SEQ_TURMA)
+                                        ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).NUM_SEQ_TURMA, NULL)
+                                        ,DECODE(V_COD_TIPO_RUBRICA, 1, V_QTD_CARGA_MENSAL, 42, V_QTD_CARGA_MENSAL, 43, V_QTD_CARGA_MENSAL, V_QTD_CARGA_MENSAL_AD_NOT)
+                                    INTO V_COD_CURSO
+                                        ,V_COD_CURSO_EXTENSAO
+                                        ,V_NUM_SEQ_TURMA
+                                        ,V_COD_TURMA_EXTENSAO
+                                        ,V_QTDE_HORAS_MOVIMENTO
+                                    FROM DUAL;
+                                  --
+                                  GRAVA_ARQUIVO(V_COD_TIPO_RUBRICA                 -- PI_COD_TIPO_RUBRICA
+                                               , P_DT_COMPETENCIA                  -- PI_DT_COMPETENCIA           (V_DT_COMPETENCIA)
+                                               , V_PROXIMO_CICLO                   -- PI_PROXIMO_CICLO
+                                               , 'PRO_APURACAO_ALOCACAO'           -- PI_NOM_PROCESSO
+                                               , '1'                               -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                                               , V_DESTINO                         -- PI_IND_DESTINO
+                                               , V_CURSO_EXTENSAO                  -- PI_IND_CURSO_EXTENSAO
+                                               , T_TURMA(I).COD_PROFESSOR          -- PI_COD_PROFESSOR
+                                               , T_TURMA(I).NUM_MATRICULA          -- PI_NUM_MATRICULA
+                                               , T_TURMA(I).COD_TIPO_CURSO         -- PI_COD_TIPO_CURSO
+                                               , V_COD_CURSO                       -- PI_COD_CURSO
+                                               , V_COD_CURSO_EXTENSAO              -- PI_COD_CURSO_EXTENSAO
+                                               , T_TURMA(I).COD_CAMPUS             -- PI_COD_CAMPUS
+                                               , T_TURMA(I).COD_TURNO              -- PI_COD_TURNO
+                                               , V_QTDE_HORAS_MOVIMENTO            -- PI_QTD_HORAS_MOVIMENTO
+                                               , NULL                              -- PI_VALOR_MOVIMENTO
+                                               , SYSDATE                           -- PI_DT_GERACAO
+                                               , NULL                              -- PI_DT_LIBERACAO
+                                               , NULL                              -- PI_DT_PROCESSAMENTO
+                                               , NULL                              -- PI_NUM_SEQ_SOLICITACAO
+                                               , T_TURMA(I).NUM_SEQ_ALOCACAO       -- PI_NUM_SEQ_ALOCACAO
+                                               , NULL                              -- PI_NUM_SEQ_ATUACAO
+                                               , NULL                              -- PI_MES_ANO_ATUACAO
+                                               , NULL                              -- PI_NUM_SEQ_FALTA
+                                               , T_TURMA(I).APRIMORAMENTO          -- PI_PERCENTUAL_APRIMORAMENTO
+                                               , T_TURMA(I).COD_BANCO              -- PI_COD_BANCO
+                                               , T_TURMA(I).COD_AGENCIA            -- PI_COD_AGENCIA
+                                               , T_TURMA(I).COD_AGENCIA_DV         -- PI_COD_AGENCIA_DV
+                                               , T_TURMA(I).CONTA_CORRENTE         -- PI_COD_CONTA_CORRENTE
+                                               , T_TURMA(I).CONTA_CORRENTE_DV      -- PI_COD_CONTA_CORRENTE_DV
+                                               , T_TURMA(I).COD_CATEGORIA_PROFESSOR -- PI_COD_CATEGORIA_PROFESSOR
+                                               , V_NUM_SEQ_TURMA                   -- PI_NUM_SEQ_TURMA
+                                               , V_COD_TURMA_EXTENSAO              -- PI_COD_TURMA_EXTENSAO
+                                               , T_TURMA(I).IND_TIPO_CONTRATO      -- PI_IND_TIPO_CONTRATO
+                                               , P_COD_INSTITUICAO                 -- PI_COD_INSTITUICAO
+                                               , 'N'                               -- PI_COMMIT
+                                               , P_IND_ERRO                        -- PO_IND_ERRO
+                                               , P_MSG_RETORNO                     -- PO_MSG_RETORNO
+                                               , NULL                              -- PI_COD_TIPO_ATUACAO
+                                               , NULL                              -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                                               , 'N'                               -- PI_IND_ENSINO_DISTANCIA
+                                               , T_TURMA(I).QTD_DIA_TRABALHADO     -- PI_QTD_DIAS_TRABALHADOS
+                                               , NULL);                            -- PI_QTD_HORAS_TEORICO
+                                  --
+                                  IF P_IND_ERRO <> '0' THEN
+                                    RAISE_APPLICATION_ERROR(-20010, P_IND_ERRO || ' - ' || P_MSG_RETORNO);
+                                  END IF;
+                                  --
+                                  V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+                                  --
+                                EXCEPTION
+                                WHEN NO_DATA_FOUND THEN
+                                    NULL;
+                                END;
+                                --
+                              END IF; -- IF TO_CHAR(R_AP.HH_FIM_AULA,'HH24MM') >'2200' THEN
+                              --
+                            END IF; -- R_AP.TURNO_TEMPO IN (35, 36) AND R_AP.IND_TELEPRESENCIAL = 'N'
+                            --
+                          END IF; -- IF VET_ALOCACAO(P_NUM_SEQ_ALOCACAO_OK) >= 30 ...
+
+                  EXCEPTION
+                  WHEN OTHERS THEN
+                      --                            DBMS_OUTPUT.PUT_LINE('ERRO 1 - POS '||V_POSICAO||' - '||SQLERRM);
+                      P_MSG_RETORNO := 'HOUVE UMA FALHA AO GERAR QUANTIDADE DE HORAS : ' || SQLERRM || V_NUM_SEQ_ERRO;
+                      V_ERRO_ORACLE := SQLERRM;
+                      RAISE ERR_NAO_PREVISTO;
+                  END; -- BEGIN
+
+                  --
+                  -- COMMIT A CADA 1000 REGISTROS
+                  --
+                  IF MOD(V_QTD_REG_GRAVADOS, 1000) = 0 AND
+                     P_COMMIT = 'S' THEN
+                     COMMIT;
+                  END IF;
+
+              END LOOP; -- T_TURMA.COUNT
+            --
+        END LOOP;  -- C_PROFESSOR
+
+
+        IF V_PROF_EOF THEN
+          P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODO ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || ' NO PROCESSO DE CARGA HORÁRIA.';
+          RAISE ERR_ADVERTENCIA;
+        END IF; -- IF C_AP%NOTFOUND THEN
+
+        --
+        V_POSICAO := 140;
+        --
+        P_MSG_RETORNO := 'QTDE DE REGISTROS HT : ' || V_CONT_HT || CHR(13) || 'QTDE DE REGISTROS HTV : ' || V_CONT_HTV || CHR(13) || 'QTDE DE REGISTROS HTE: ' || V_CONT_HTE || CHR(13) || 'QTDE DE REGISTROS DT : ' || V_CONT_DT || CHR(13) || 'QTDE DE REGISTROS ENVIADOS AO RH : ' || V_CONT_DESTINO_RH ||
+                         CHR(13) || 'QTDE DE REGISTROS ENVIADOS AO FIN: ' || V_CONT_DESTINO_FIN || CHR(13) || 'QTDE DE REGISTROS NÃO PERTENCENTES AOS TIPOS DE CURSO GRADUACAO E POLITECNICO: ' || V_QTDE_OUTROS_TP_CURSOS;
+        --
+        --            DBMS_OUTPUT.PUT_LINE(P_MSG_RETORNO);
+        --
+        BEGIN
+          --
+          -- INCLUI O SISTÉTICO DO PROCESSO
+          --
+          BEGIN
+            V_COD_INSTITUICAO_FILTRO := TO_NUMBER(P_COD_INSTITUICAO);
+          EXCEPTION
+            WHEN OTHERS THEN
+              V_COD_INSTITUICAO_FILTRO := NULL;
+          END;
+          --
+          V_POSICAO := 200;
+          --
+          INSERT INTO SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+            (DT_MES_ANO_COMPETENCIA
+            ,NOM_PROCESSO
+            ,CICLO
+            ,IND_TIPO_PROCESSO
+             --                          , COD_PROFESSOR
+            ,NUM_SEQ_DADOS_PROFESSOR
+            ,COD_CAMPUS
+            ,COD_TIPO_CURSO
+            ,QTD_GRAVADOS_IP
+            ,DT_INICIO_GERACAO
+            ,DT_FIM_GERACAO
+            ,IND_RETORNO
+            ,TXT_MSG_PROCESSO
+            ,TOTAL_REGS_RUBRICA_1
+            ,TOTAL_REGS_RUBRICA_2
+            ,TOTAL_HORAS_RUBRICA_1
+            ,TOTAL_HORAS_RUBRICA_2
+            ,QTD_REGS_DESTINO_1
+            ,QTD_REGS_DESTINO_2
+            ,IND_TIPO_CONTRATO
+            ,COD_USUARIO_LOG
+            ,COD_INSTITUICAO)
+          VALUES
+            (P_DT_COMPETENCIA
+            ,'PRO_APURACAO_ALOCACAO'
+            ,V_PROXIMO_CICLO
+            ,P_IND_TIPO_PROCESSO
+             --                          , P_COD_PROFESSOR
+            ,P_NUM_SEQ_DADOS_PROFESSOR
+            ,P_COD_CAMPUS
+            ,P_COD_TIPO_CURSO
+            ,V_CONT_GRAVADOS_IP
+            ,V_START
+            ,SYSDATE
+            ,P_IND_ERRO
+            ,P_MSG_RETORNO
+            ,V_CONT_RUBRICA_CARGA_HR
+            ,V_CONT_RUBRICA_AD_NOT
+            ,V_QTD_CARGA_MENSAL_HR
+            ,V_QTD_CARGA_MENSAL_AD_NOT
+            ,V_CONT_DESTINO_RH
+            ,V_CONT_DESTINO_FIN
+            ,P_IND_TIPO_CONTRATO
+            ,P_COD_USUARIO
+            ,V_COD_INSTITUICAO_FILTRO);
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            P_MSG_RETORNO := 'HOUVE UMA FALHA AO INCLUIR NA TABELA "CONTROLE_PAGAMENTO_PROFESSOR".';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        --**************************************************************************
+        -- ATUALIZA ALOCAÇÃO DE PROFESSOR PARA INDICAÇÃO DE GERAÇÃO DE PAGAMENTO ***
+        --**************************************************************************
+        BEGIN
+          --
+          V_POSICAO := 210;
+          --
+          UPDATE SIA.ALOCACAO_PROFESSOR AP
+             SET AP.DT_GERACAO_PAGAMENTO = SYSDATE
+           WHERE EXISTS ( SELECT 1
+														FROM SIA.A_INTERFACE_PAGAMENTO IP
+													 WHERE TRUNC(IP.DT_MES_ANO_COMPETENCIA, 'MM') = TRUNC(P_DT_COMPETENCIA, 'MM')
+														 AND IP.NUM_SEQ_ALOCACAO = AP.NUM_SEQ_ALOCACAO
+														 AND IP.COD_PROFESSOR = AP.COD_PROFESSOR
+														 AND IP.COD_INSTITUICAO = P_COD_INSTITUICAO
+														 AND IP.NOM_PROCESSO = 'PRO_APURACAO_ALOCACAO');
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            P_MSG_RETORNO := 'ERRO AO ATUALIZAR INDICAÇÃO DE PAGAMENTO NA ALOCAÇÃO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        IF P_COMMIT = 'S' THEN
+          COMMIT;
+        END IF;
+        --
+        GRAVA_LOG('FIM DO PROCESSAMENTO.  OPERAÇÃO REALIZADA COM SUCESSO.', 0);
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --
+      EXCEPTION
+        WHEN ERR_ADVERTENCIA THEN
+          P_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          P_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          P_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          V_ERRO_ORACLE := SQLERRM;
+          P_MSG_RETORNO := V_POSICAO || ' - ' || V_ERRO_ORACLE;
+          P_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+      END;
+      --
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF P_COMMIT = 'S' THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF P_IND_ERRO = '2' THEN
+          --
+          SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_ALOCACAO, IE: ' || P_COD_INSTITUICAO, V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, P_MSG_RETORNO);
+          --
+        END IF;
+        --
+    END;
+    --
+
+  END PRO_APURACAO_ALOCACAO;
+
+
+
+
+  --
+  -- APURAR O VALOR OU HORAS QUE O PROFESSOR SERÁ DESCONTADO REFERENTES AS FALTAS E
+  -- ABONOS.
+  --
+  PROCEDURE PRO_APURACAO_FALTA(P_DT_COMPETENCIA          IN DATE
+                              ,P_NUM_SEQ_DADOS_PROFESSOR IN VARCHAR2 DEFAULT NULL
+                              ,P_COD_TIPO_CURSO          IN NUMBER DEFAULT NULL
+                              ,P_COD_CAMPUS              IN NUMBER DEFAULT NULL
+                              ,P_IND_TIPO_PROCESSO       IN VARCHAR2 DEFAULT NULL
+                              ,P_IND_TIPO_CONTRATO       IN VARCHAR2 DEFAULT NULL
+                              ,P_COD_USUARIO             IN VARCHAR2
+                              ,P_COMMIT                  IN VARCHAR2
+                              ,P_IND_ERRO                OUT VARCHAR2
+                              ,P_MSG_RETORNO             OUT VARCHAR2
+                              ,P_COD_INSTITUICAO         IN VARCHAR2) IS
+    --
+    -- P_IND_TIPO_PROCESSO  (G) GERAL
+    --                      (P) PARCIAL: CHAMADA ISOLADAMENTE
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    --
+    V_ERRO_ORACLE VARCHAR2(300);
+    --V_IND_ERRO                       VARCHAR2(1);
+    --V_MSG_RETORNO                    VARCHAR2(300);
+    V_TXT_PARAMETROS               VARCHAR2(500);
+    V_POSICAO                      NUMBER(03);
+    V_CONT_T                       INTEGER;
+    V_CONT_TE                      INTEGER;
+    V_CONT_HT                      INTEGER;
+    V_CONT_DT                      INTEGER;
+    V_CONT_HTE                     INTEGER;
+    V_CURSO_EXTENSAO               VARCHAR2(1);
+    V_DESTINO                      INTEGER;
+    V_CONT_DESTINO_RH              INTEGER;
+    V_CONT_DESTINO_FIN             INTEGER;
+    V_CONT_GRAVADOS_IP             INTEGER;
+    V_CONT_RUBRICA_FALTA           INTEGER;
+    V_CONT_RUBRICA_ABONO           INTEGER;
+    V_CONT_RUBRICA_REPOSICAO_FALTA PLS_INTEGER;
+    V_CONT_RUBRICA_REPOSICAO_EXTRA PLS_INTEGER;
+    --V_CONT_RUBRICA_AULA_EXTRA        PLS_INTEGER;
+    V_QTD_REG_LIDOS    PLS_INTEGER;
+    V_QTD_REG_GRAVADOS PLS_INTEGER;
+    --V_QTD_REG_DESPREZADOS            PLS_INTEGER;
+    --      V_DT_COMPETENCIA                 DATE;
+    V_DT_COMP_INI           DATE;
+    V_DT_COMP_FIM           DATE;
+    V_QTDE_OUTROS_TP_CURSOS PLS_INTEGER;
+    V_PROXIMO_CICLO         PLS_INTEGER;
+    V_ACHOU                 PLS_INTEGER;
+    V_COD_CURSO             NUMBER(10);
+    V_COD_CURSO_EXTENSAO    NUMBER(10);
+    --V_QTDE_HORAS_MOVIMENTO           NUMBER(6,2);
+    V_NUM_SEQ_TURMA          NUMBER(10);
+    V_COD_TURMA_EXTENSAO     NUMBER(10);
+    V_COD_TIPO_RUBRICA       NUMBER(2);
+    V_START                  DATE;
+    V_COD_INSTITUICAO_FILTRO NUMBER(6, 0);
+    --
+    CURSOR C_FALTA IS
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N') AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N') AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO
+            ,V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'FT' V_OCORRENCIA
+            , -- FALTA NORMAL
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE (V_IND_FALTA = 'S' AND NVL(IND_PAGAR_FALTA_RET, 'N') = 'N' AND TRUNC(V_DT_FALTA) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+
+         --
+         AND NVL(V_IND_PAGAMENTO_ALOCACAO,'S') = 'S'   -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA)
+         --
+      UNION ALL
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N') AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N') AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO
+            ,V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'AB' V_OCORRENCIA
+            , -- ABONO NORMAL
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE (V_IND_ABONO = 'S' AND NVL(IND_PAGAR_ABONO_RET, 'N') = 'N' AND TRUNC(V_DT_LANCAMENTO_ABONO) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+         --
+         AND NVL(V_IND_PAGAMENTO_ALOCACAO,'S') = 'S'   -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA)
+         --
+      UNION ALL
+      SELECT V.TABELA
+            ,V.COD_TIPO_CURSO AS V_COD_TIPO_CURSO
+            ,V.V_COD_CURSO
+            ,V.COD_CAMPUS AS V_COD_CAMPUS
+            ,V.COD_TURNO
+            ,V.NUM_SEQ_TURMA
+            ,V.COD_PROFESSOR AS V_COD_PROFESSOR
+            ,V.NUM_SEQ_DADOS_PROFESSOR
+            ,V.NUM_MATRICULA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_FALTA
+            ,V.NUM_SEQ_SOLICITACAO
+            ,'' AS V_IND_FALTA
+            ,'' AS V_IND_ABONO
+            ,'' AS IND_FALTA_RETROATIVA
+            ,'' AS IND_ABONO_RETROATIVO
+            ,'' AS IND_REPOSICAO
+            ,V.V_IND_TIPO_CONTRATO
+            ,V.V_PERCENTUAL_APRIMORAMENTO
+            ,V.V_COD_BANCO
+            ,V.V_COD_AGENCIA
+            ,V.V_COD_AGENCIA_DV
+            ,V.V_CONTA_CORRENTE
+            ,V.V_CONTA_CORRENTE_DV
+            ,V.V_COD_CATEGORIA_PROFESSOR
+            ,V.CPF_PROFESSOR
+            ,V.TIPO_AULA
+            ,V.COD_DISCIPLINA
+            ,V.COD_TURMA
+            ,V.DT_AUTORIZA_3
+            ,V.IND_AUTORIZACAO_3
+            ,'AE' V_OCORRENCIA
+            , -- AULA EXTRA
+             1 VAL_HORA_AULA
+            ,V.COD_INSTITUICAO
+        FROM SIA.V_SOLICITACAO_AULA V
+       WHERE V.TIPO_AULA = 'E'
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V.COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V.COD_CAMPUS = P_COD_CAMPUS)
+         AND V.COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+         AND (TRUNC(V.DT_AUTORIZA_3) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND V.IND_GERA_PAGAMENTO = 'S' -- SELECIONA APENAS AULA EXTRA QUE GERA PAGAMENTO
+
+         --AND V_IND_PAGAMENTO_ALOCACAO = 'S' -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V.COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V.V_COD_CURSO = V.V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V.V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V.NUM_MATRICULA)
+         --
+      UNION ALL
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N') AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N') AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO
+            ,V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'FR' V_OCORRENCIA
+            , -- FALTA RETROATIVA
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE (V_IND_FALTA = 'S' AND IND_PAGAR_FALTA_RET = 'S' AND TRUNC(DT_LANCAMENTO_FALTA_RET) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+         --
+         AND NVL(V_IND_PAGAMENTO_ALOCACAO,'S') = 'S'   -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA)
+         --
+      UNION ALL
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N') AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N') AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO
+            ,V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'AR' V_OCORRENCIA
+            , -- ABONO RETROATIVO
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE (V_IND_ABONO = 'S' AND IND_PAGAR_ABONO_RET = 'S' AND TRUNC(DT_LANCAMENTO_ABONO_RET) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+         --
+         AND NVL(V_IND_PAGAMENTO_ALOCACAO,'S') = 'S'   -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA)
+         --
+      UNION ALL
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL) AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N') AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N') AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO
+            ,V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'RF' V_OCORRENCIA
+            , -- REPOSIÇÕES DE AULA POR FALTA
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE V_IND_TIPO_AULA = 'R'  -- REPOSIÇÕES POR FALTA
+         AND (V_IND_FALTA = 'S' AND V_IND_REPOSICAO = 'S' AND TRUNC(DT_AUTORIZA_3) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         AND IND_GERA_PAGAMENTO = 'S' -- SELECIONA APENAS A REPOSIÇÃO POR FALTA QUE GERA PAGAMENTO
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+         --
+         AND NVL(V_IND_PAGAMENTO_ALOCACAO,'S') = 'S'   -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA)
+
+      UNION ALL
+      -- AULA DE SUBSTITUIÇÃO
+      SELECT V_TABELA
+            ,V_COD_TIPO_CURSO
+            ,V_COD_CURSO
+            ,V_COD_CAMPUS
+            ,V_COD_TURNO
+            ,V_PK_TURMA
+            ,V_COD_PROFESSOR_SUB                V_COD_PROFESSOR
+            ,V_NUM_SEQ_DADOS_PROFESSOR_SUB      V_NUM_SEQ_DADOS_PROFESSOR
+            ,V_NUM_MATRICULA_SUB                V_NUM_MATRICULA
+            ,V_NUM_SEQ_FALTA
+            ,TO_NUMBER(NULL)                AS NUM_SEQ_SOLICITACAO
+            ,NVL(V_IND_FALTA, 'N')          AS V_IND_FALTA
+            ,NVL(V_IND_ABONO, 'N')          AS V_IND_ABONO
+            ,NVL(IND_FALTA_RETROATIVA, 'N') AS IND_FALTA_RETROATIVA
+            ,NVL(IND_ABONO_RETROATIVO, 'N') AS IND_ABONO_RETROATIVO
+            ,V_IND_REPOSICAO
+            ,V_CONTRATO_PROFESSOR_SUB          V_CONTRATO_PROFESSOR
+            ,V_PERCENTUAL_APRIMORAMENTO_SUB    V_PERCENTUAL_APRIMORAMENTO
+            ,V_COD_BANCO_SUB                   V_COD_BANCO
+            ,V_COD_AGENCIA_SUB                 V_COD_AGENCIA
+            ,V_COD_AGENCIA_DV_SUB              V_COD_AGENCIA_DV
+            ,V_CONTA_CORRENTE_SUB              V_CONTA_CORRENTE
+            ,V_CONTA_CORRENTE_DV_SUB           V_CONTA_CORRENTE_DV
+            ,V_COD_CATEGORIA_PROFESSOR_SUB     V_COD_CATEGORIA_PROFESSOR
+            ,V_CPF_PROFESSOR_SUB               V_CPF_PROFESSOR
+
+            ,V_IND_TIPO_AULA
+            ,COD_DISCIPLINA
+            ,COD_TURMA
+            ,DT_AUTORIZA_3
+            ,IND_AUTORIZACAO_3
+            ,'AS' V_OCORRENCIA
+            , -- AULA DE SUBSTITUIÇÃO
+             CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+            ,COD_INSTITUICAO
+        FROM SIA.V_FALTA V
+            ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+       WHERE V_IND_TIPO_AULA = 'S'  -- AULA DE SUBSTITUIÇÃO
+         AND (V_IND_FALTA = 'S' AND V_IND_REPOSICAO = 'S' AND TRUNC(DT_AUTORIZA_3) BETWEEN V_DT_COMP_INI AND V_DT_COMP_FIM)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR V_CONTRATO_PROFESSOR_SUB = P_IND_TIPO_CONTRATO)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR V_NUM_SEQ_DADOS_PROFESSOR_SUB = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR V_COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR V_COD_CAMPUS = P_COD_CAMPUS)
+         AND COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         AND IND_GERA_PAGAMENTO = 'S' -- SELECIONA APENAS A REPOSIÇÃO POR FALTA QUE GERA PAGAMENTO
+
+         --  /*10-09-2010*/
+         AND V.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+         AND V.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+         AND V.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+         AND V.V_COD_CAMPUS             = CT.COD_CAMPUS
+         AND V.V_COD_TIPO_CURSO         = CT.COD_TIPO_CURSO
+         AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                         AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+         --  /*10-09-2010*/
+         --
+         --AND V_IND_PAGAMENTO_ALOCACAO = 'S' -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO  = V_COD_TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(DT_INI_VIGENCIA, 'MM') AND TRUNC(DT_FIM_VIGENCIA, 'MM')
+                 AND TRUNC(P_DT_COMPETENCIA, 'YYYY') BETWEEN TRUNC(DT_INI_VIGENCIA, 'YYYY') AND TRUNC(DT_FIM_VIGENCIA, 'YYYY')
+                 AND ((VP.COD_CURSO IS NULL AND V_COD_CURSO = V_COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VP.COD_CURSO = V_COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND V_IND_TIPO_SALARIO_SUB = 'H'
+--         AND IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = V_NUM_MATRICULA_SUB)
+
+       ORDER BY V_NUM_SEQ_DADOS_PROFESSOR
+               ,V_COD_PROFESSOR
+               ,V_COD_CAMPUS
+               ,V_COD_TIPO_CURSO
+               ,COD_DISCIPLINA
+               ,COD_TURMA;
+
+    --
+    R_FALTA C_FALTA%ROWTYPE;
+    --
+    --
+    -- INÍCIO DA PRO_APURACAO_FALTA
+    --
+  BEGIN
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        V_TXT_PARAMETROS := ' P_DT_COMPETENCIA   : ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || CHR(13) || ' P_NUM_SEQ_DADOS_PROFESSOR : ' || P_NUM_SEQ_DADOS_PROFESSOR || CHR(13) || ' P_COD_TIPO_CURSO   : ' || P_COD_TIPO_CURSO || CHR(13) || ' P_COD_CAMPUS       : ' || P_COD_CAMPUS || CHR(13) ||
+                            ' P_IND_TIPO_PROCESSO: ' || P_IND_TIPO_PROCESSO || CHR(13) || ' P_IND_TIPO_CONTRATO: ' || P_IND_TIPO_CONTRATO || CHR(13) || ' P_COD_INSTITUICAO  : ' || P_COD_INSTITUICAO;
+        --
+        P_IND_ERRO                     := '0';
+        P_MSG_RETORNO                  := '';
+        V_CURSO_EXTENSAO               := 'N';
+        V_CONT_T                       := 0;
+        V_CONT_TE                      := 0;
+        V_CONT_HT                      := 0;
+        V_CONT_DT                      := 0;
+        V_CONT_HTE                     := 0;
+        V_DESTINO                      := 1;
+        V_CONT_DESTINO_RH              := 0;
+        V_CONT_DESTINO_FIN             := 0;
+        V_CONT_GRAVADOS_IP             := 0;
+        V_CONT_RUBRICA_FALTA           := 0;
+        V_CONT_RUBRICA_ABONO           := 0;
+        V_CONT_RUBRICA_REPOSICAO_FALTA := 0;
+        V_CONT_RUBRICA_REPOSICAO_EXTRA := 0;
+        --V_CONT_RUBRICA_AULA_EXTRA      := 0;
+        -- Alteração - solicitação 2352. Efetuar nova alteração na data início para dia 01 do mês.
+        --          V_DT_COMP_INI                  := ADD_MONTHS(TO_DATE('16/'||TO_CHAR(P_DT_COMPETENCIA,'MM/YYYY'),'DD/MM/YYYY'),-1);
+        --          V_DT_COMP_FIM                  := TO_DATE('15/'||TO_CHAR(P_DT_COMPETENCIA,'MM/YYYY'),'DD/MM/YYYY');
+        V_DT_COMP_INI      := ADD_MONTHS(TO_DATE('01/' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY'), 'DD/MM/YYYY'), -1);
+        V_DT_COMP_FIM      := TRUNC(LAST_DAY(ADD_MONTHS(P_DT_COMPETENCIA, -1)));
+        V_QTD_REG_LIDOS    := 0;
+        V_QTD_REG_GRAVADOS := 0;
+        --V_QTD_REG_DESPREZADOS          := 0;
+        V_QTDE_OUTROS_TP_CURSOS := 0;
+        --
+        SELECT SYSDATE
+          INTO V_START
+          FROM DUAL;
+        --
+        -- 1. VALIDA PARÂMETROS OBRIGATÓRIOS
+        --
+        V_POSICAO := 10;
+        --
+        IF P_DT_COMPETENCIA IS NULL
+        THEN
+          P_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        IF P_IND_TIPO_PROCESSO IS NULL
+        THEN
+          P_MSG_RETORNO := 'O TIPO DE PROCESSO DEVE SER INFORMADO.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        V_POSICAO := 20;
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_APURACAO_FALTA';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'O PROCESSO "PRO_APURACAO_FALTA" DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- 3. ABRE O CURSOR E CARREGA AS LINHAS NO REGISTRO ANTERIOR (R_AP_ANT)
+        --
+        V_POSICAO := 30;
+        --
+        OPEN C_FALTA;
+        FETCH C_FALTA
+          INTO R_FALTA;
+        --
+        IF C_FALTA%NOTFOUND
+        THEN
+          P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODO ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || ' NO PROCESSO DE FALTA / ABONO / REPOSIÇÃO / AULA EXTRA.';
+          RAISE ERR_ADVERTENCIA;
+        END IF;
+        --
+        -- 4. OBTEM O PRÓXIMO CICLO DENTRO DE UMA COMPETÊNCIA PERTENCENTE A RUBRICA.
+        --
+        V_POSICAO := 40;
+        --
+        BEGIN
+          --
+          SELECT NVL(MAX(CICLO), 0) + 1
+            INTO V_PROXIMO_CICLO
+            FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+           WHERE DT_MES_ANO_COMPETENCIA = P_DT_COMPETENCIA
+             AND COD_INSTITUICAO = P_COD_INSTITUICAO
+             AND NOM_PROCESSO = 'PRO_APURACAO_FALTA';
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            V_ERRO_ORACLE := SQLERRM;
+            P_MSG_RETORNO := 'FALHA AO RECUPERAR O PRÓXIMO CICLO DE INTERFACE PAGAMENTO PARA O PROCESSO FALTA / ABONO / REPOSIÇÃO / AULA EXTRA.';
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        WHILE C_FALTA%FOUND
+        LOOP
+          --
+          -- ATUALIZA CONTADORES
+          --
+          V_POSICAO := 60;
+          --
+          V_CURSO_EXTENSAO := 'N';
+          --
+          V_QTD_REG_LIDOS := V_QTD_REG_LIDOS + 1;
+          --
+          IF R_FALTA.V_TABELA = 'T'
+          THEN
+            V_CONT_T := V_CONT_T + 1;
+          ELSIF R_FALTA.V_TABELA = 'TE'
+          THEN
+            V_CONT_TE := V_CONT_TE + 1;
+          ELSIF R_FALTA.V_TABELA = 'HT'
+          THEN
+            V_CONT_HT := V_CONT_HT + 1;
+          ELSIF R_FALTA.V_TABELA = 'DT'
+          THEN
+            V_CONT_DT := V_CONT_DT + 1;
+          ELSIF R_FALTA.V_TABELA = 'HTE'
+          THEN
+            V_CONT_HTE       := V_CONT_HTE + 1;
+            V_CURSO_EXTENSAO := 'S';
+          ELSE
+            P_MSG_RETORNO := 'NÃO EXISTE UMA TABELA ASSOCIADA A FALTA: ' || R_FALTA.V_TABELA;
+            RAISE ERR_PREVISTO;
+          END IF;
+          --
+          IF R_FALTA.V_CONTRATO_PROFESSOR IN ('F', 'S')
+          THEN
+            V_DESTINO         := 1;
+            V_CONT_DESTINO_RH := V_CONT_DESTINO_RH + 1;
+          ELSIF R_FALTA.V_CONTRATO_PROFESSOR = 'P'
+          THEN
+            V_DESTINO          := 2;
+            V_CONT_DESTINO_FIN := V_CONT_DESTINO_FIN + 1;
+          END IF;
+          --
+          IF (R_FALTA.V_OCORRENCIA = 'FT' AND R_FALTA.V_IND_FALTA = 'S') OR
+             (R_FALTA.V_OCORRENCIA = 'FR' AND R_FALTA.IND_FALTA_RETROATIVA = 'S')
+          THEN
+            --
+            V_CONT_RUBRICA_FALTA := V_CONT_RUBRICA_FALTA + 1;
+            V_COD_TIPO_RUBRICA   := 3;
+            --
+          ELSIF (R_FALTA.V_OCORRENCIA = 'AB' AND R_FALTA.V_IND_ABONO = 'S') OR
+                (R_FALTA.V_OCORRENCIA = 'AR' AND R_FALTA.IND_ABONO_RETROATIVO = 'S')
+          THEN
+            --
+            V_CONT_RUBRICA_ABONO := V_CONT_RUBRICA_ABONO + 1;
+            V_COD_TIPO_RUBRICA   := 4;
+            --
+          ELSIF R_FALTA.V_OCORRENCIA = 'AE'
+          THEN
+            --
+            V_CONT_RUBRICA_REPOSICAO_EXTRA := V_CONT_RUBRICA_REPOSICAO_EXTRA + 1;
+            V_COD_TIPO_RUBRICA             := 21;
+            --
+          ELSIF R_FALTA.V_OCORRENCIA = 'RF'
+          THEN
+            --
+            V_CONT_RUBRICA_REPOSICAO_FALTA := V_CONT_RUBRICA_REPOSICAO_FALTA + 1;
+            V_COD_TIPO_RUBRICA             := 20;
+            --
+          ELSIF R_FALTA.V_OCORRENCIA = 'AS'
+          THEN
+            --
+            V_CONT_RUBRICA_REPOSICAO_FALTA := V_CONT_RUBRICA_REPOSICAO_FALTA + 1;
+            V_COD_TIPO_RUBRICA             := 18;
+            --
+          END IF;
+          --
+          SELECT DECODE(R_FALTA.V_TABELA, 'HTE', NULL, R_FALTA.V_COD_CURSO)
+                ,DECODE(R_FALTA.V_TABELA, 'HTE', R_FALTA.V_COD_CURSO, NULL)
+                ,DECODE(R_FALTA.V_TABELA, 'HTE', NULL, R_FALTA.V_PK_TURMA)
+                ,DECODE(R_FALTA.V_TABELA, 'HTE', R_FALTA.V_PK_TURMA, NULL)
+            INTO V_COD_CURSO
+                ,V_COD_CURSO_EXTENSAO
+                ,V_NUM_SEQ_TURMA
+                ,V_COD_TURMA_EXTENSAO
+            FROM DUAL;
+          --
+          -- ATUALIZA A_INTERFACE_PAGAMENTO
+          --
+          V_POSICAO := 65;
+          --
+          GRAVA_ARQUIVO(V_COD_TIPO_RUBRICA                         -- PI_COD_TIPO_RUBRICA
+                       , P_DT_COMPETENCIA                          -- PI_DT_COMPETENCIA
+                       , V_PROXIMO_CICLO                           -- PI_PROXIMO_CICLO
+                       , 'PRO_APURACAO_FALTA'                      -- PI_NOM_PROCESSO
+                       , '1'                                       -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                       , V_DESTINO                                 -- PI_IND_DESTINO
+                       , V_CURSO_EXTENSAO                          -- PI_IND_CURSO_EXTENSAO
+                       , R_FALTA.V_COD_PROFESSOR                   -- PI_COD_PROFESSOR
+                       , R_FALTA.V_NUM_MATRICULA                   -- PI_NUM_MATRICULA
+                       , R_FALTA.V_COD_TIPO_CURSO                  -- PI_COD_TIPO_CURSO
+                       , V_COD_CURSO                               -- PI_COD_CURSO
+                       , V_COD_CURSO_EXTENSAO                      -- PI_COD_CURSO_EXTENSAO
+                       , R_FALTA.V_COD_CAMPUS                      -- PI_COD_CAMPUS
+                       , R_FALTA.V_COD_TURNO                       -- PI_COD_TURNO
+                       , R_FALTA.VAL_HORA_AULA                     -- PI_QTD_HORAS_MOVIMENTO
+                       , NULL                                      -- PI_VALOR_MOVIMENTO
+                       , SYSDATE                                   -- PI_DT_GERACAO
+                       , NULL                                      -- PI_DT_LIBERACAO
+                       , NULL                                      -- PI_DT_PROCESSAMENTO
+                       , R_FALTA.NUM_SEQ_SOLICITACAO               -- PI_NUM_SEQ_SOLICITACAO
+                       , NULL                                      -- PI_NUM_SEQ_ALOCACAO
+                       , NULL                                      -- PI_NUM_SEQ_ATUACAO
+                       , NULL                                      -- PI_MES_ANO_ATUACAO
+                       , R_FALTA.V_NUM_SEQ_FALTA                   -- PI_NUM_SEQ_FALTA
+                       , R_FALTA.V_PERCENTUAL_APRIMORAMENTO        -- PI_PERCENTUAL_APRIMORAMENTO
+                       , R_FALTA.V_COD_BANCO                       -- PI_COD_BANCO
+                       , R_FALTA.V_COD_AGENCIA                     -- PI_COD_AGENCIA
+                       , R_FALTA.V_COD_AGENCIA_DV                  -- PI_COD_AGENCIA_DV
+                       , R_FALTA.V_CONTA_CORRENTE                  -- PI_COD_CONTA_CORRENTE
+                       , R_FALTA.V_CONTA_CORRENTE_DV               -- PI_COD_CONTA_CORRENTE_DV
+                       , R_FALTA.V_COD_CATEGORIA_PROFESSOR         -- PI_COD_CATEGORIA_PROFESSOR
+                       , V_NUM_SEQ_TURMA                           -- PI_NUM_SEQ_TURMA
+                       , V_COD_TURMA_EXTENSAO                      -- PI_COD_TURMA_EXTENSAO
+                       , R_FALTA.V_CONTRATO_PROFESSOR              -- PI_IND_TIPO_CONTRATO
+                       , P_COD_INSTITUICAO                         -- PI_COD_INSTITUICAO
+                       , 'N'                                       -- PI_COMMIT
+                       , P_IND_ERRO                                -- PO_IND_ERRO
+                       , P_MSG_RETORNO                             -- PO_MSG_RETORNO
+                       , NULL                                      -- PI_COD_TIPO_ATUACAO
+                       , NULL                                      -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                       , 'N'                                       -- PI_IND_ENSINO_DISTANCIA
+                       , NULL                                      -- PI_QTD_DIAS_TRABALHADOS
+                       , NULL);                                    -- PI_QTD_HORAS_TEORICO
+          --
+          IF P_IND_ERRO <> '0'
+          THEN
+            RAISE ERR_PREVISTO;
+          END IF;
+          --
+          V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+          --
+          V_POSICAO := 70;
+          --
+          IF MOD(V_QTD_REG_GRAVADOS, 1000) = 0 AND
+             P_COMMIT = 'S'
+          THEN
+            COMMIT;
+          END IF;
+          --
+          FETCH C_FALTA
+            INTO R_FALTA;
+          --
+        END LOOP;
+        --
+        V_POSICAO     := 130;
+        P_MSG_RETORNO := 'QTDE DE REGISTROS T: ' || V_CONT_T || CHR(13) || 'QTDE DE REGISTROS TE: ' || V_CONT_TE || CHR(13) || 'QTDE DE REGISTROS HT: ' || V_CONT_HT || CHR(13) || 'QTDE DE REGISTROS DT: ' || V_CONT_DT || CHR(13) || 'QTDE DE REGISTROS HTE: ' || V_CONT_HTE || CHR(13) ||
+                         'QTDE DE REGISTROS ENVIADOS AO RH: ' || V_CONT_DESTINO_RH || CHR(13) || 'QTDE DE REGISTROS ENVIADOS AO FIN: ' || V_CONT_DESTINO_FIN || CHR(13) || 'QTDE DE REGISTROS NÃO PERTENCENTES AOS TIPOS DE CURSO GRADUACAO E POLITECNICO: ' || V_QTDE_OUTROS_TP_CURSOS;
+        --
+        --          DBMS_OUTPUT.PUT_LINE(SUBSTR(P_MSG_RETORNO,1,254));
+        --          DBMS_OUTPUT.PUT_LINE(SUBSTR(P_MSG_RETORNO,255,499));
+        --
+        -- INCLUI O SISTÉTICO DO PROCESSO
+        --
+        V_POSICAO := 200;
+        --
+        BEGIN
+          V_COD_INSTITUICAO_FILTRO := TO_NUMBER(P_COD_INSTITUICAO);
+        EXCEPTION
+          WHEN OTHERS THEN
+            V_COD_INSTITUICAO_FILTRO := NULL;
+        END;
+        --
+        INSERT INTO SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+          (DT_MES_ANO_COMPETENCIA
+          ,NOM_PROCESSO
+          ,CICLO
+          ,IND_TIPO_PROCESSO
+           --                    , COD_PROFESSOR
+          ,NUM_SEQ_DADOS_PROFESSOR
+          ,COD_CAMPUS
+          ,COD_TIPO_CURSO
+          ,QTD_GRAVADOS_IP
+          ,DT_INICIO_GERACAO
+          ,DT_FIM_GERACAO
+          ,IND_RETORNO
+          ,TXT_MSG_PROCESSO
+          ,TOTAL_REGS_RUBRICA_1
+          ,TOTAL_REGS_RUBRICA_2
+          ,TOTAL_REGS_RUBRICA_3
+          ,TOTAL_REGS_RUBRICA_4
+          ,TOTAL_HORAS_RUBRICA_1
+          ,TOTAL_HORAS_RUBRICA_2
+          ,TOTAL_HORAS_RUBRICA_3
+          ,TOTAL_HORAS_RUBRICA_4
+          ,QTD_REGS_DESTINO_1
+          ,QTD_REGS_DESTINO_2
+          ,IND_TIPO_CONTRATO
+          ,COD_USUARIO_LOG
+          ,COD_INSTITUICAO)
+        VALUES
+          (P_DT_COMPETENCIA
+          ,'PRO_APURACAO_FALTA'
+          ,V_PROXIMO_CICLO
+          ,P_IND_TIPO_PROCESSO
+           --                    , P_COD_PROFESSOR
+          ,P_NUM_SEQ_DADOS_PROFESSOR
+          ,P_COD_CAMPUS
+          ,P_COD_TIPO_CURSO
+          ,V_CONT_GRAVADOS_IP
+          ,V_START
+          ,SYSDATE
+          ,P_IND_ERRO
+          ,P_MSG_RETORNO
+          ,V_CONT_RUBRICA_FALTA
+          ,V_CONT_RUBRICA_ABONO
+          ,V_CONT_RUBRICA_REPOSICAO_FALTA
+          ,V_CONT_RUBRICA_REPOSICAO_EXTRA
+          ,V_CONT_RUBRICA_FALTA
+          ,V_CONT_RUBRICA_ABONO
+          ,V_CONT_RUBRICA_REPOSICAO_FALTA
+          ,V_CONT_RUBRICA_REPOSICAO_EXTRA
+          ,V_CONT_DESTINO_RH
+          ,V_CONT_DESTINO_FIN
+          ,P_IND_TIPO_CONTRATO
+          ,P_COD_USUARIO
+          ,V_COD_INSTITUICAO_FILTRO);
+        --
+        IF P_COMMIT = 'S' THEN
+          COMMIT;
+        END IF;
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --
+      EXCEPTION
+        WHEN ERR_ADVERTENCIA THEN
+          P_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          P_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          P_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          P_MSG_RETORNO := V_POSICAO || ' - ' || SQLERRM;
+          V_ERRO_ORACLE := SQLERRM;
+          P_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+      END;
+      --
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF P_COMMIT = 'S' THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF P_IND_ERRO = '2' THEN
+          --
+          SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_FALTA, IE: ' || R_FALTA.COD_INSTITUICAO, V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, P_MSG_RETORNO);
+          --
+        END IF;
+    END;
+    --
+    IF C_FALTA%ISOPEN
+    THEN
+      CLOSE C_FALTA;
+    END IF;
+    --
+  END PRO_APURACAO_FALTA;
+  --
+  -- APURAR O VALOR OU HORAS QUE O PROFESSOR IRÁ RECEBER REFERENTES AS ATUAÇÕES DO
+  -- PERÍODO.
+  --
+  PROCEDURE PRO_APURACAO_ATUACAO_VARIAVEL(P_DT_COMPETENCIA          IN DATE
+                                         ,P_NUM_SEQ_DADOS_PROFESSOR IN VARCHAR2 DEFAULT NULL
+                                         ,P_COD_TIPO_CURSO          IN NUMBER DEFAULT NULL
+                                         ,P_COD_CAMPUS              IN NUMBER DEFAULT NULL
+                                         ,P_IND_TIPO_PROCESSO       IN VARCHAR2 DEFAULT NULL
+                                         ,P_IND_TIPO_CONTRATO       IN VARCHAR2 DEFAULT NULL
+                                         ,P_COD_USUARIO             IN VARCHAR2
+                                         ,P_COMMIT                  IN VARCHAR2
+                                         ,P_IND_ERRO                OUT VARCHAR2
+                                         ,P_MSG_RETORNO             OUT VARCHAR2
+                                         ,P_COD_INSTITUICAO         IN VARCHAR2) IS
+    --
+    -- P_IND_TIPO_PROCESSO  (G) GERAL
+    --                      (P) PARCIAL: CHAMADA ISOLADAMENTE
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    --NOME_PADRAO             CONSTANT VARCHAR2(30) := 'CH';
+    V_ERRO_ORACLE VARCHAR2(4000);
+    --V_IND_ERRO                       VARCHAR2(1);
+    --V_MSG_RETORNO                    VARCHAR2(4000);
+    V_TXT_PARAMETROS   VARCHAR2(4000);
+    V_POSICAO          PLS_INTEGER;
+    V_DESTINO          INTEGER;
+    V_CONT_DESTINO_RH  PLS_INTEGER;
+    V_CONT_DESTINO_FIN PLS_INTEGER;
+    V_CONT_GRAVADOS_IP PLS_INTEGER;
+    --V_START                          DATE;
+    V_QTDE_DIAS_TRAB NUMBER(10);
+    --V_FATOR_MULTIPLICADOR            PLS_INTEGER;
+    --V_DT_COMPETENCIA                 DATE;
+    --V_QTD_REG_LIDOS                  PLS_INTEGER;
+    V_QTD_REG_GRAVADOS PLS_INTEGER;
+    --V_QTD_REG_DESPREZADOS            PLS_INTEGER;
+    V_QTDE_OUTROS_TP_CURSOS PLS_INTEGER;
+    V_DIA_FIM               PLS_INTEGER;
+    V_PROXIMO_CICLO         PLS_INTEGER;
+    V_QTDE_HORA_MOVIMENTO   NUMBER(12, 2);
+    V_VALOR_MOVIMENTO       NUMBER(12, 2);
+    --V_NUM_SEQ_MOVIMENTO              NUMBER(12);
+    V_ACHOU          PLS_INTEGER;
+    V_CURSO_EXTENSAO VARCHAR2(1);
+    --V_COD_CURSO                      NUMBER(10);
+    --V_COD_CURSO_EXTENSAO             NUMBER(10);
+    --V_QTDE_HORAS_MOVIMENTO           NUMBER(12,2);
+    --V_NUM_SEQ_TURMA                  NUMBER(10);
+    --V_COD_TURMA_EXTENSAO             NUMBER(10);
+    V_COD_INSTITUICAO_FILTRO NUMBER(6, 0);
+    --
+    CURSOR C_AP IS
+      SELECT AP.COD_PROFESSOR
+            ,DP.NUM_SEQ_DADOS_PROFESSOR
+            ,AP.COD_TIPO_CURSO
+            ,AP.DT_INICIO_ATUACAO
+            ,AP.DT_FIM_ATUACAO
+            ,AP.COD_CAMPUS
+            ,TAT.COD_TURNO
+            ,AP.COD_CURSO
+            ,AP.COD_CURSO_EXTENSAO
+            ,AP.VALOR_FIXO
+            ,AP.HORA_FIXA
+            ,AP.VALOR_HORA
+            ,P.NUM_MATRICULA
+            ,DP.NOM_PROFESSOR
+            ,P.IND_TIPO_CONTRATO
+            ,P.PERCENTUAL_APRIMORAMENTO
+            ,DP.COD_BANCO
+            ,DP.COD_AGENCIA
+            ,DP.COD_AGENCIA_DV
+            ,DP.COD_CONTA_CORRENTE
+            ,DP.COD_CONTA_CORRENTE_DV
+            ,P.COD_CATEGORIA_PROFESSOR
+            ,DP.CPF_PROFESSOR
+            ,TA.COD_TIPO_RUBRICA
+            ,AP.NUM_SEQ_ATUACAO
+            ,AP.IND_PROPORCIONAL
+            ,AP.COD_TIPO_ATUACAO -- COLUNA_NOVA EM INTERFACE_PAGAMENTO
+            ,C.COD_INSTITUICAO
+        FROM SIA.ATUACAO_PROFESSOR      AP
+            ,SIA.TURNO_ATUACAO          TAT
+            ,SIA.PROFESSOR              P
+            ,SIA.DADOS_PROFESSOR        DP
+            ,SIA.TIPO_ATUACAO           TA
+            ,SIA.MES_REFERENCIA_ATUACAO MRA
+            ,SIA.AUTORIZACAO_ATUACAO    AA -- PROJDTI 482 06/01/05
+            ,SIA.CAMPUS                 C
+      --    WHERE  TRUNC(P_DT_COMPETENCIA,'MM') BETWEEN TRUNC(AP.DT_INICIO_ATUACAO,'MM') AND TRUNC(AP.DT_FIM_ATUACAO,'MM')
+       WHERE TRUNC(MRA.DT_MES_ANO_REFERENCIA, 'MM') = TRUNC(P_DT_COMPETENCIA, 'MM') -- PROJDTI 482 06/01/05
+         AND AP.COD_PROFESSOR = MRA.COD_PROFESSOR -- PROJDTI 482 06/01/05
+         AND P.NUM_SEQ_DADOS_PROFESSOR = DP.NUM_SEQ_DADOS_PROFESSOR
+         AND AP.NUM_SEQ_ATUACAO = MRA.NUM_SEQ_ATUACAO -- PROJDTI 482 06/01/05
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR DP.NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR AP.COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR AP.COD_CAMPUS = P_COD_CAMPUS)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR P.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+         AND AP.COD_PROFESSOR = P.COD_PROFESSOR
+         AND AA.COD_PROFESSOR = AP.COD_PROFESSOR
+         AND AA.NUM_SEQ_ATUACAO = AP.NUM_SEQ_ATUACAO
+         AND AA.IND_AUTORIZACAO = 3 -- TERCEIRA AUTORIZAÇÃO, A PARTIR DO MÊS DE dezembro/2009.
+         AND TA.IND_FIXO_VARIAVEL = 'V'
+         AND TA.COD_TIPO_ATUACAO(+) = AP.COD_TIPO_ATUACAO
+         AND AP.COD_PROFESSOR       = TAT.COD_PROFESSOR(+)
+         AND AP.NUM_SEQ_ATUACAO     = TAT.NUM_SEQ_ATUACAO(+)
+         AND AP.COD_CAMPUS = C.COD_CAMPUS
+         AND C.COD_INSTITUICAO = P_COD_INSTITUICAO
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND P.IND_TIPO_SALARIO IN ('H','M')
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = P.NUM_MATRICULA)
+         --
+       ORDER BY DP.NUM_SEQ_DADOS_PROFESSOR
+               ,AP.COD_PROFESSOR;
+    --
+    R_AP C_AP%ROWTYPE;
+    --
+    --
+  BEGIN
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --V_QTD_REG_LIDOS         := 0;
+        V_QTD_REG_GRAVADOS      := 0;
+        V_QTDE_OUTROS_TP_CURSOS := 0;
+        V_DESTINO               := 1;
+        V_CONT_DESTINO_RH       := 0;
+        V_CONT_DESTINO_FIN      := 0;
+        V_CONT_GRAVADOS_IP      := 0;
+        --
+        V_TXT_PARAMETROS := ' P_DT_COMPETENCIA   : ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || CHR(13) || ' P_NUM_SEQ_DADOS_PROFESSOR : ' || P_NUM_SEQ_DADOS_PROFESSOR || CHR(13) || ' P_COD_TIPO_CURSO   : ' || P_COD_TIPO_CURSO || CHR(13) || ' P_COD_CAMPUS       : ' || P_COD_CAMPUS || CHR(13) ||
+                            ' P_IND_TIPO_PROCESSO: ' || P_IND_TIPO_PROCESSO || CHR(13) || ' P_IND_TIPO_CONTRATO: ' || P_IND_TIPO_CONTRATO || CHR(13) || ' P_COD_INSTITUICAO  : ' || P_COD_INSTITUICAO;
+        --
+        -- 1. VALIDA PARÂMETROS OBRIGATÓRIOS
+        --
+        V_POSICAO := 10;
+        --
+        IF P_DT_COMPETENCIA IS NULL
+        THEN
+          P_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        IF P_IND_TIPO_PROCESSO IS NULL
+        THEN
+          P_MSG_RETORNO := 'O TIPO DE PROCESSO DEVE SER INFORMADO.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        V_POSICAO := 20;
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_APURACAO_ATUACAO_VARIAVEL';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'O PROCESSO "PRO_APURACAO_ATUACAO_VARIAVEL" DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- 3. ABRE O CURSOR E CARREGA AS LINHAS NO REGISTRO ANTERIOR (R_AP_ANT)
+        --
+        V_POSICAO := 30;
+        --
+        OPEN C_AP;
+        FETCH C_AP
+          INTO R_AP;
+        --
+        IF C_AP%NOTFOUND
+        THEN
+          P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODO ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || ' NO PROCESSO DE ATUAÇÃO VARIÁVEL.';
+          RAISE ERR_ADVERTENCIA;
+        END IF;
+        --
+        BEGIN
+          --
+          -- 4. OBTEM O PRÓXIMO CICLO DENTRO DE UMA COMPETÊNCIA.
+          --
+          V_POSICAO := 40;
+          --
+          SELECT NVL(MAX(CICLO), 0) + 1
+            INTO V_PROXIMO_CICLO
+            FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+           WHERE DT_MES_ANO_COMPETENCIA = P_DT_COMPETENCIA
+             AND COD_INSTITUICAO = P_COD_INSTITUICAO
+             AND NOM_PROCESSO = 'PRO_APURACAO_ATUACAO_VARIAVEL';
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            P_MSG_RETORNO := 'FALHA AO RECUPERAR O PRÓXIMO CICLO DE INTERFACE PAGAMENTO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        WHILE C_AP%FOUND
+        LOOP
+          --
+          -- ATUALIZA CONTADORES
+          --
+          V_POSICAO := 50;
+          --
+          IF R_AP.IND_TIPO_CONTRATO IN ('F', 'S')
+          THEN
+            V_DESTINO         := 1;
+            V_CONT_DESTINO_RH := V_CONT_DESTINO_RH + 1;
+          ELSIF R_AP.IND_TIPO_CONTRATO = 'P'
+          THEN
+            V_DESTINO          := 2;
+            V_CONT_DESTINO_FIN := V_CONT_DESTINO_FIN + 1;
+          END IF;
+          --
+          -- PROPORCIONAL
+          --
+          V_POSICAO := 60;
+          --
+          IF R_AP.IND_PROPORCIONAL = 'S'
+          THEN
+            --
+            V_QTDE_DIAS_TRAB := 0;
+            --
+            IF SUBSTR(R_AP.DT_FIM_ATUACAO, 4, 7) = TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') AND
+               SUBSTR(R_AP.DT_INICIO_ATUACAO, 4, 7) = TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY')
+            THEN
+              --
+              V_DIA_FIM := SUBSTR(R_AP.DT_FIM_ATUACAO, 1, 2);
+              --
+              IF SUBSTR(R_AP.DT_FIM_ATUACAO, 4, 2) = '02' AND
+                 V_DIA_FIM = TO_CHAR(LAST_DAY(TO_DATE(R_AP.DT_FIM_ATUACAO, 'DD/MM/YYYY')), 'DD')
+              THEN
+                V_DIA_FIM := 30;
+              END IF;
+              --
+              V_QTDE_DIAS_TRAB := V_DIA_FIM - SUBSTR(R_AP.DT_INICIO_ATUACAO, 1, 2) + 1;
+              --
+              IF V_QTDE_DIAS_TRAB = 31
+              THEN
+                V_QTDE_DIAS_TRAB := 30;
+              END IF;
+              --
+            ELSIF SUBSTR(R_AP.DT_FIM_ATUACAO, 4, 7) = TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY')
+            THEN
+              --
+              V_QTDE_DIAS_TRAB := SUBSTR(R_AP.DT_FIM_ATUACAO, 1, 2);
+              --
+              IF V_QTDE_DIAS_TRAB = 31
+              THEN
+                V_QTDE_DIAS_TRAB := 30;
+              ELSIF SUBSTR(R_AP.DT_FIM_ATUACAO, 4, 2) = '02' AND
+                    V_QTDE_DIAS_TRAB = TO_CHAR(LAST_DAY(TO_DATE(R_AP.DT_FIM_ATUACAO, 'DD/MM/YYYY')), 'DD')
+              THEN
+                V_QTDE_DIAS_TRAB := 30;
+              END IF;
+              --
+            ELSIF SUBSTR(R_AP.DT_INICIO_ATUACAO, 4, 7) = TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY')
+            THEN
+              --
+              V_QTDE_DIAS_TRAB := 30 - SUBSTR(R_AP.DT_INICIO_ATUACAO, 1, 2) + 1;
+              --
+              IF V_QTDE_DIAS_TRAB = 0
+              THEN
+                V_QTDE_DIAS_TRAB := 1;
+              END IF;
+              --
+            END IF;
+            --
+          ELSE
+            --
+            V_QTDE_DIAS_TRAB := 30;
+            --
+          END IF;
+          --
+          V_VALOR_MOVIMENTO     := NULL;
+          V_QTDE_HORA_MOVIMENTO := NULL;
+          --
+          IF NVL(R_AP.VALOR_FIXO, 0) > 0
+          THEN
+            --
+            V_VALOR_MOVIMENTO := (R_AP.VALOR_FIXO / 30) * V_QTDE_DIAS_TRAB;
+            --
+          ELSIF NVL(R_AP.HORA_FIXA, 0) > 0
+          THEN
+            --
+            IF NVL(R_AP.VALOR_HORA, 0) > 0
+            THEN
+              V_VALOR_MOVIMENTO := ((R_AP.VALOR_HORA * R_AP.HORA_FIXA) / 30) * V_QTDE_DIAS_TRAB;
+            ELSE
+              V_QTDE_HORA_MOVIMENTO := (R_AP.HORA_FIXA / 30) * V_QTDE_DIAS_TRAB;
+            END IF;
+            --
+          END IF;
+          --
+          SELECT DECODE(R_AP.COD_CURSO_EXTENSAO, NULL, 'N', 'S')
+            INTO V_CURSO_EXTENSAO
+            FROM DUAL;
+          --
+          --
+          -- ATUALIZA A_INTERFACE_PAGAMENTO
+          --
+          V_POSICAO := 70;
+          --
+          GRAVA_ARQUIVO(R_AP.COD_TIPO_RUBRICA                   -- PI_COD_TIPO_RUBRICA
+                       , P_DT_COMPETENCIA                       -- PI_DT_COMPETENCIA
+                       , V_PROXIMO_CICLO                        -- PI_PROXIMO_CICLO
+                       , 'PRO_APURACAO_ATUACAO_VARIAVEL'        -- PI_NOM_PROCESSO
+                       , '1'                                    -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                       , V_DESTINO                              -- PI_IND_DESTINO
+                       , V_CURSO_EXTENSAO                       -- PI_IND_CURSO_EXTENSAO
+                       , R_AP.COD_PROFESSOR                     -- PI_COD_PROFESSOR
+                       , R_AP.NUM_MATRICULA                     -- PI_NUM_MATRICULA
+                       , R_AP.COD_TIPO_CURSO                    -- PI_COD_TIPO_CURSO
+                       , R_AP.COD_CURSO                         -- PI_COD_CURSO
+                       , R_AP.COD_CURSO_EXTENSAO                -- PI_COD_CURSO_EXTENSAO
+                       , R_AP.COD_CAMPUS                        -- PI_COD_CAMPUS
+                       , R_AP.COD_TURNO                         -- PI_COD_TURNO
+                       , V_QTDE_HORA_MOVIMENTO                  -- PI_QTD_HORAS_MOVIMENTO
+                       , V_VALOR_MOVIMENTO                      -- PI_VALOR_MOVIMENTO
+                       , SYSDATE                                -- PI_DT_GERACAO
+                       , NULL                                   -- PI_DT_LIBERACAO
+                       , NULL                                   -- PI_DT_PROCESSAMENTO
+                       , NULL                                   -- PI_NUM_SEQ_SOLICITACAO
+                       , NULL                                   -- PI_NUM_SEQ_ALOCACAO
+                       , R_AP.NUM_SEQ_ATUACAO                   -- PI_NUM_SEQ_ATUACAO
+                       , NULL                                   -- PI_MES_ANO_ATUACAO
+                       , NULL                                   -- PI_NUM_SEQ_FALTA
+                       , R_AP.PERCENTUAL_APRIMORAMENTO          -- PI_PERCENTUAL_APRIMORAMENTO
+                       , R_AP.COD_BANCO                         -- PI_COD_BANCO
+                       , R_AP.COD_AGENCIA                       -- PI_COD_AGENCIA
+                       , R_AP.COD_AGENCIA_DV                    -- PI_COD_AGENCIA_DV
+                       , R_AP.COD_CONTA_CORRENTE                -- PI_COD_CONTA_CORRENTE
+                       , R_AP.COD_CONTA_CORRENTE_DV             -- PI_COD_CONTA_CORRENTE_DV
+                       , R_AP.COD_CATEGORIA_PROFESSOR           -- PI_COD_CATEGORIA_PROFESSOR
+                       , NULL                                   -- PI_NUM_SEQ_TURMA
+                       , NULL                                   -- PI_COD_TURMA_EXTENSAO
+                       , R_AP.IND_TIPO_CONTRATO                 -- PI_IND_TIPO_CONTRATO
+                       , P_COD_INSTITUICAO                      -- PI_COD_INSTITUICAO
+                       , 'N'                                    -- PI_COMMIT
+                       , P_IND_ERRO                             -- PO_IND_ERRO
+                       , P_MSG_RETORNO                          -- PO_MSG_RETORNO
+                       , R_AP.COD_TIPO_ATUACAO                  -- PI_COD_TIPO_ATUACAO
+                       , NULL                                   -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                       , 'N'                                    -- PI_IND_ENSINO_DISTANCIA
+                       , V_QTDE_DIAS_TRAB                       -- PI_QTD_DIAS_TRABALHADOS
+                       , NULL);                                 -- PI_QTD_HORAS_TEORICO
+          --
+          IF P_IND_ERRO <> '0'
+          THEN
+            RAISE ERR_PREVISTO;
+          END IF;
+          --
+          V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+          --
+          IF MOD(V_QTD_REG_GRAVADOS, 1000) = 0 AND
+             P_COMMIT = 'S'
+          THEN
+            COMMIT;
+          END IF;
+          --
+          FETCH C_AP
+            INTO R_AP;
+          --
+        END LOOP;
+        --
+        P_MSG_RETORNO := 'QTDE DE REGISTROS ENVIADOS AO RH: ' || V_CONT_DESTINO_RH || CHR(13) || 'QTDE DE REGISTROS ENVIADOS AO FIN: ' || V_CONT_DESTINO_FIN || CHR(13) || 'QTDE DE REGISTROS NÃO PERTENCENTES AOS TIPOS DE CURSO GRADUACAO E POLITECNICO: ' || V_QTDE_OUTROS_TP_CURSOS;
+        --
+        --          DBMS_OUTPUT.PUT_LINE(P_MSG_RETORNO);
+        --
+        BEGIN
+          --
+          BEGIN
+            V_COD_INSTITUICAO_FILTRO := TO_NUMBER(P_COD_INSTITUICAO);
+          EXCEPTION
+            WHEN OTHERS THEN
+              V_COD_INSTITUICAO_FILTRO := NULL;
+          END;
+          -- INCLUI O SISTÉTICO DO PROCESSO
+          --
+          V_POSICAO := 200;
+          --
+          INSERT INTO SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+            (DT_MES_ANO_COMPETENCIA
+            ,NOM_PROCESSO
+            ,IND_TIPO_PROCESSO
+             --                      , COD_PROFESSOR
+            ,NUM_SEQ_DADOS_PROFESSOR
+            ,COD_CAMPUS
+            ,COD_TIPO_CURSO
+            ,QTD_GRAVADOS_IP
+            ,DT_INICIO_GERACAO
+            ,DT_FIM_GERACAO
+            ,IND_RETORNO
+            ,TXT_MSG_PROCESSO
+            ,TOTAL_REGS_RUBRICA_1
+            ,TOTAL_REGS_RUBRICA_2
+            ,TOTAL_HORAS_RUBRICA_1
+            ,TOTAL_HORAS_RUBRICA_2
+            ,QTD_REGS_DESTINO_1
+            ,QTD_REGS_DESTINO_2
+            ,CICLO
+            ,IND_TIPO_CONTRATO
+            ,COD_USUARIO_LOG
+            ,COD_INSTITUICAO)
+          VALUES
+            (P_DT_COMPETENCIA
+            ,'PRO_APURACAO_ATUACAO_VARIAVEL'
+            ,P_IND_TIPO_PROCESSO
+             --                      , P_COD_PROFESSOR
+            ,P_NUM_SEQ_DADOS_PROFESSOR
+            ,P_COD_CAMPUS
+            ,P_COD_TIPO_CURSO
+            ,V_CONT_GRAVADOS_IP
+            ,SYSDATE
+            ,SYSDATE
+            ,P_IND_ERRO
+            ,P_MSG_RETORNO
+            ,NULL --V_CONT_RUBRICA_CARGA_HR,
+            ,NULL --V_CONT_RUBRICA_AD_NOT,
+            ,NULL --V_QTD_CARGA_MENSAL_HR,
+            ,NULL --V_QTD_CARGA_MENSAL_AD_NOT,
+            ,V_CONT_DESTINO_RH
+            ,V_CONT_DESTINO_FIN
+            ,V_PROXIMO_CICLO
+            ,P_IND_TIPO_CONTRATO
+            ,P_COD_USUARIO
+            ,V_COD_INSTITUICAO_FILTRO);
+        EXCEPTION
+          WHEN OTHERS THEN
+            P_MSG_RETORNO := 'HOUVE UMA FALHA AO INCLUIR NA TABELA "CONTROLE_PAGAMENTO_PROFESSOR".';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        V_POSICAO := 300;
+        --
+        IF P_COMMIT = 'S'
+        THEN
+          COMMIT;
+        END IF;
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --
+      EXCEPTION
+        --
+        WHEN ERR_ADVERTENCIA THEN
+          P_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          P_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          P_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          P_MSG_RETORNO := V_POSICAO || ' - ' || SQLERRM;
+          V_ERRO_ORACLE := SQLERRM;
+          P_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+          --
+      END;
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF P_COMMIT = 'S'
+        THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF P_IND_ERRO = '2'
+        THEN
+          SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_ATUACAO_VARIAVEL, IE: ' || R_AP.COD_INSTITUICAO, V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, P_MSG_RETORNO);
+        END IF;
+        --
+    END;
+    --
+    IF C_AP%ISOPEN
+    THEN
+      CLOSE C_AP;
+    END IF;
+    --
+  END PRO_APURACAO_ATUACAO_VARIAVEL;
+  --
+  PROCEDURE PRO_APURACAO_ATUACAO_FIXA(P_DT_COMPETENCIA          IN DATE
+                                     ,P_NUM_SEQ_DADOS_PROFESSOR IN VARCHAR2 DEFAULT NULL
+                                     ,P_COD_TIPO_CURSO          IN NUMBER DEFAULT NULL
+                                     ,P_COD_CAMPUS              IN NUMBER DEFAULT NULL
+                                     ,P_IND_TIPO_PROCESSO       IN VARCHAR2 DEFAULT NULL
+                                     ,P_IND_TIPO_CONTRATO       IN VARCHAR2 DEFAULT NULL
+                                     ,P_COD_USUARIO             IN VARCHAR2
+                                     ,P_COMMIT                  IN VARCHAR2
+                                     ,P_IND_ERRO                OUT VARCHAR2
+                                     ,P_MSG_RETORNO             OUT VARCHAR2
+                                     ,P_COD_INSTITUICAO         IN VARCHAR2) IS
+    --
+    -- P_IND_TIPO_PROCESSO  (G) GERAL
+    --                      (P) PARCIAL: CHAMADA ISOLADAMENTE
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    --NOME_PADRAO             CONSTANT VARCHAR2(30) := 'CH';
+    V_ERRO_ORACLE VARCHAR2(4000);
+    --V_IND_ERRO                       VARCHAR2(1);
+    --V_MSG_RETORNO                    VARCHAR2(4000);
+    V_TXT_PARAMETROS   VARCHAR2(4000);
+    V_POSICAO          PLS_INTEGER;
+    V_DESTINO          INTEGER;
+    V_CONT_DESTINO_RH  PLS_INTEGER;
+    V_CONT_DESTINO_FIN PLS_INTEGER;
+    V_CONT_GRAVADOS_IP PLS_INTEGER;
+    --V_START                          DATE;
+    V_QTDE_DIAS_TRAB NUMBER(10);
+    --V_FATOR_MULTIPLICADOR            PLS_INTEGER;
+    --V_DT_COMPETENCIA                 DATE;
+    --V_QTD_REG_LIDOS                  PLS_INTEGER;
+    V_QTD_REG_GRAVADOS PLS_INTEGER;
+    --V_QTD_REG_DESPREZADOS            PLS_INTEGER;
+    V_QTDE_OUTROS_TP_CURSOS PLS_INTEGER;
+    V_DIA_INI               PLS_INTEGER;
+    V_DIA_FIM               PLS_INTEGER;
+    V_PROXIMO_CICLO         PLS_INTEGER;
+    V_QTDE_HORA_MOVIMENTO   NUMBER(12, 2);
+    V_VALOR_MOVIMENTO       NUMBER(12, 2);
+    --V_NUM_SEQ_MOVIMENTO              NUMBER(12);
+    V_ACHOU          PLS_INTEGER;
+    V_CURSO_EXTENSAO VARCHAR2(1);
+    --V_COD_CURSO                      NUMBER(10);
+    --V_COD_CURSO_EXTENSAO             NUMBER(10);
+    --V_QTDE_HORAS_MOVIMENTO           NUMBER(12,2);
+    --V_NUM_SEQ_TURMA                  NUMBER(10);
+    --V_COD_TURMA_EXTENSAO             NUMBER(10);
+    V_QTD_HORAS_TRABALHADAS  SIA.A_INTERFACE_PAGAMENTO.QTD_HORAS_TRABALHADAS%TYPE;
+    V_COD_INSTITUICAO_FILTRO NUMBER(6, 0);
+    --
+    CURSOR C_AP IS
+      SELECT AP.COD_PROFESSOR
+            ,DP.NUM_SEQ_DADOS_PROFESSOR
+            ,AP.COD_TIPO_CURSO
+            ,AP.DT_INICIO_ATUACAO
+            ,AP.DT_FIM_ATUACAO
+            ,AP.COD_CAMPUS
+            ,TAT.COD_TURNO
+            ,AP.COD_CURSO
+            ,NULL AS COD_CURSO_EXTENSAO
+            ,AP.VALOR_FIXO
+            ,NULL HORA_FIXA
+            ,NULL VALOR_HORA
+            ,P.NUM_MATRICULA
+            ,DP.NOM_PROFESSOR
+            ,P.IND_TIPO_CONTRATO
+            ,P.PERCENTUAL_APRIMORAMENTO
+            ,DP.COD_BANCO
+            ,DP.COD_AGENCIA
+            ,DP.COD_AGENCIA_DV
+            ,DP.COD_CONTA_CORRENTE
+            ,DP.COD_CONTA_CORRENTE_DV
+            ,P.COD_CATEGORIA_PROFESSOR
+            ,DP.CPF_PROFESSOR
+            ,TA.COD_TIPO_RUBRICA
+            ,AP.NUM_SEQ_ATUACAO
+            ,AP.IND_PROPORCIONAL
+            ,AP.COD_TIPO_ATUACAO -- COLUNA_NOVA EM INTERFACE_PAGAMENTO
+            ,AP.HORA_FIXA AS QTD_HORAS_TRAB -- REQ. 4893
+            ,AP.COD_INSTITUICAO
+            ,TA.IND_CR_APOIO
+        FROM SIA.ATUACAO_PROFESSOR AP
+            ,SIA.TURNO_ATUACAO     TAT
+            ,SIA.PROFESSOR         P
+            ,SIA.DADOS_PROFESSOR   DP
+            ,SIA.TIPO_ATUACAO      TA
+            ,SIA.AUTORIZACAO_ATUACAO AA -- PROJETO 12/03/09
+       WHERE TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(AP.DT_INICIO_ATUACAO, 'MM') AND TRUNC(AP.DT_FIM_ATUACAO, 'MM')
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR DP.NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR AP.COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR AP.COD_CAMPUS = P_COD_CAMPUS)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR P.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+         AND AP.COD_PROFESSOR          = P.COD_PROFESSOR
+         AND P.NUM_SEQ_DADOS_PROFESSOR = DP.NUM_SEQ_DADOS_PROFESSOR
+         AND TA.IND_FIXO_VARIAVEL      = 'F'
+         AND TA.COD_TIPO_ATUACAO(+)    = AP.COD_TIPO_ATUACAO
+         AND AA.COD_PROFESSOR          = AP.COD_PROFESSOR
+         AND AA.NUM_SEQ_ATUACAO        = AP.NUM_SEQ_ATUACAO
+         AND AA.IND_AUTORIZACAO        = 2 -- SEGUNDA AUTORIZAÇÃO, A PARTIR DO MÊS DE ABRIL/2009.
+         AND AP.COD_PROFESSOR          = TAT.COD_PROFESSOR(+)
+         AND AP.NUM_SEQ_ATUACAO        = TAT.NUM_SEQ_ATUACAO(+)
+         AND NVL(AP.VALOR_FIXO, 0)     > 0
+         AND AP.COD_INSTITUICAO        = P_COD_INSTITUICAO
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND P.IND_TIPO_SALARIO        IN ('H','M')
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = P.NUM_MATRICULA)
+         --
+       ORDER BY DP.NUM_SEQ_DADOS_PROFESSOR
+               ,AP.COD_PROFESSOR;
+    --
+    R_AP C_AP%ROWTYPE;
+    --
+    --
+  BEGIN
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --V_QTD_REG_LIDOS         := 0;
+        V_QTD_REG_GRAVADOS      := 0;
+        V_QTDE_OUTROS_TP_CURSOS := 0;
+        V_DESTINO               := 1;
+        V_CONT_DESTINO_RH       := 0;
+        V_CONT_DESTINO_FIN      := 0;
+        V_CONT_GRAVADOS_IP      := 0;
+        --
+        V_TXT_PARAMETROS := ' P_DT_COMPETENCIA   : ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || CHR(13) || ' P_NUM_SEQ_DADOS_PROFESSOR : ' || P_NUM_SEQ_DADOS_PROFESSOR || CHR(13) || ' P_COD_TIPO_CURSO   : ' || P_COD_TIPO_CURSO || CHR(13) || ' P_COD_CAMPUS       : ' || P_COD_CAMPUS || CHR(13) ||
+                            ' P_IND_TIPO_PROCESSO: ' || P_IND_TIPO_PROCESSO || CHR(13) || ' P_IND_TIPO_CONTRATO: ' || P_IND_TIPO_CONTRATO || CHR(13) || ' P_COD_INSTITUICAO  : ' || P_COD_INSTITUICAO;
+        --
+        -- 1. VALIDA PARÂMETROS OBRIGATÓRIOS
+        --
+        V_POSICAO := 10;
+        --
+        IF P_DT_COMPETENCIA IS NULL
+        THEN
+          P_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        IF P_IND_TIPO_PROCESSO IS NULL
+        THEN
+          P_MSG_RETORNO := 'O TIPO DE PROCESSO DEVE SER INFORMADO.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        V_POSICAO := 20;
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_APURACAO_ATUACAO_FIXA';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'O PROCESSO "PRO_APURACAO_ATUACAO_FIXA" DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- 3. ABRE O CURSOR E CARREGA AS LINHAS NO REGISTRO ANTERIOR (R_AP_ANT)
+        --
+        V_POSICAO := 30;
+        --
+        OPEN C_AP;
+        FETCH C_AP
+          INTO R_AP;
+        --
+        IF C_AP%NOTFOUND
+        THEN
+          P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODO ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || ' NO PROCESSO DE ATUAÇÃO FIXA.';
+          RAISE ERR_ADVERTENCIA;
+        END IF;
+        --
+        BEGIN
+          --
+          -- 4. OBTEM O PRÓXIMO CICLO DENTRO DE UMA COMPETÊNCIA.
+          --
+          V_POSICAO := 40;
+          --
+          SELECT NVL(MAX(CICLO), 0) + 1
+            INTO V_PROXIMO_CICLO
+            FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+           WHERE DT_MES_ANO_COMPETENCIA = P_DT_COMPETENCIA
+             AND COD_INSTITUICAO = P_COD_INSTITUICAO
+             AND NOM_PROCESSO = 'PRO_APURACAO_ATUACAO_FIXA';
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            P_MSG_RETORNO := 'FALHA AO RECUPERAR O PRÓXIMO CICLO DE INTERFACE PAGAMENTO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        WHILE C_AP%FOUND
+        LOOP
+          --
+          -- ATUALIZA CONTADORES
+          --
+          V_POSICAO := 50;
+          --
+          IF R_AP.IND_TIPO_CONTRATO IN ('F', 'S')
+          THEN
+            V_DESTINO         := 1;
+            V_CONT_DESTINO_RH := V_CONT_DESTINO_RH + 1;
+          ELSIF R_AP.IND_TIPO_CONTRATO = 'P'
+          THEN
+            V_DESTINO          := 2;
+            V_CONT_DESTINO_FIN := V_CONT_DESTINO_FIN + 1;
+          END IF;
+          --
+          -- PROPORCIONAL
+          --
+          V_POSICAO := 60;
+          --
+          IF R_AP.IND_PROPORCIONAL = 'S'
+          THEN
+            --
+            --V_QTDE_DIAS_TRAB := 0;
+            --
+            IF TRUNC(R_AP.DT_INICIO_ATUACAO, 'MM') = TRUNC(P_DT_COMPETENCIA, 'MM')
+            THEN
+              --
+              V_DIA_INI := TO_NUMBER(TO_CHAR(R_AP.DT_INICIO_ATUACAO, 'DD'));
+              --
+            ELSE
+              --
+              V_DIA_INI := 01;
+              --
+            END IF; -- IF TRUNC(R_AP.DT_INICIO_ATUACAO,'MM') = TRUNC(P_DT_COMPETENCIA,'MM') THEN
+            --
+            IF TRUNC(R_AP.DT_FIM_ATUACAO, 'MM') = TRUNC(P_DT_COMPETENCIA, 'MM')
+            THEN
+              --
+              V_DIA_FIM := TO_NUMBER(TO_CHAR(R_AP.DT_FIM_ATUACAO, 'DD'));
+              --
+              IF V_DIA_FIM = TO_NUMBER(TO_CHAR(LAST_DAY(R_AP.DT_FIM_ATUACAO), 'DD'))
+              THEN
+                --
+                V_DIA_FIM := 30;
+                --
+              END IF;
+              --
+            ELSE
+              --
+              V_DIA_FIM := 30;
+              --
+            END IF; -- IF TRUNC(R_AP.DT_FIM_ATUACAO,'MM') = TRUNC(P_DT_COMPETENCIA,'MM') THEN
+            --
+            V_QTDE_DIAS_TRAB := V_DIA_FIM - V_DIA_INI + 1;
+            --
+          ELSE
+            --
+            V_QTDE_DIAS_TRAB := 30;
+            --
+          END IF; -- IF R_AP.IND_PROPORCIONAL = 'S' THEN
+          --
+          V_VALOR_MOVIMENTO     := NULL;
+          V_QTDE_HORA_MOVIMENTO := NULL;
+          --
+          IF NVL(R_AP.VALOR_FIXO, 0) > 0
+          THEN
+            --
+            V_VALOR_MOVIMENTO := (R_AP.VALOR_FIXO / 30) * V_QTDE_DIAS_TRAB;
+            --
+          END IF;
+          --
+          SELECT DECODE(R_AP.COD_CURSO_EXTENSAO, NULL, 'N', 'S')
+            INTO V_CURSO_EXTENSAO
+            FROM DUAL;
+          --
+          -- REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+          --
+          V_QTD_HORAS_TRABALHADAS := ROUND(((R_AP.QTD_HORAS_TRAB * 4.5) / 30) * V_QTDE_DIAS_TRAB, 0);
+          --
+          IF V_QTD_HORAS_TRABALHADAS > 180
+          THEN
+            V_QTD_HORAS_TRABALHADAS := 180;
+          END IF;
+          --
+          -- REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+          --
+          -- ATUALIZA A_INTERFACE_PAGAMENTO
+          --
+          V_POSICAO := 70;
+          --
+          GRAVA_ARQUIVO(R_AP.COD_TIPO_RUBRICA                   -- PI_COD_TIPO_RUBRICA
+                       , P_DT_COMPETENCIA                       -- PI_DT_COMPETENCIA
+                       , V_PROXIMO_CICLO                        -- PI_PROXIMO_CICLO
+                       , 'PRO_APURACAO_ATUACAO_FIXA'            -- PI_NOM_PROCESSO
+                       , '1'                                    -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                       , V_DESTINO                              -- PI_IND_DESTINO
+                       , V_CURSO_EXTENSAO                       -- PI_IND_CURSO_EXTENSAO
+                       , R_AP.COD_PROFESSOR                     -- PI_COD_PROFESSOR
+                       , R_AP.NUM_MATRICULA                     -- PI_NUM_MATRICULA
+                       , R_AP.COD_TIPO_CURSO                    -- PI_COD_TIPO_CURSO
+                       , R_AP.COD_CURSO                         -- PI_COD_CURSO
+                       , R_AP.COD_CURSO_EXTENSAO                -- PI_COD_CURSO_EXTENSAO
+                       , R_AP.COD_CAMPUS                        -- PI_COD_CAMPUS
+                       , R_AP.COD_TURNO                         -- PI_COD_TURNO
+                       , V_QTDE_HORA_MOVIMENTO                  -- PI_QTD_HORAS_MOVIMENTO
+                       , V_VALOR_MOVIMENTO                      -- PI_VALOR_MOVIMENTO
+                       , SYSDATE                                -- PI_DT_GERACAO
+                       , NULL                                   -- PI_DT_LIBERACAO
+                       , NULL                                   -- PI_DT_PROCESSAMENTO
+                       , NULL                                   -- PI_NUM_SEQ_SOLICITACAO
+                       , NULL                                   -- PI_NUM_SEQ_ALOCACAO
+                       , R_AP.NUM_SEQ_ATUACAO                   -- PI_NUM_SEQ_ATUACAO
+                       , NULL                                   -- PI_MES_ANO_ATUACAO
+                       , NULL                                   -- PI_NUM_SEQ_FALTA
+                       , R_AP.PERCENTUAL_APRIMORAMENTO          -- PI_PERCENTUAL_APRIMORAMENTO
+                       , R_AP.COD_BANCO                         -- PI_COD_BANCO
+                       , R_AP.COD_AGENCIA                       -- PI_COD_AGENCIA
+                       , R_AP.COD_AGENCIA_DV                    -- PI_COD_AGENCIA_DV
+                       , R_AP.COD_CONTA_CORRENTE                -- PI_COD_CONTA_CORRENTE
+                       , R_AP.COD_CONTA_CORRENTE_DV             -- PI_COD_CONTA_CORRENTE_DV
+                       , R_AP.COD_CATEGORIA_PROFESSOR           -- PI_COD_CATEGORIA_PROFESSOR
+                       , NULL                                   -- PI_NUM_SEQ_TURMA
+                       , NULL                                   -- PI_COD_TURMA_EXTENSAO
+                       , R_AP.IND_TIPO_CONTRATO                 -- PI_IND_TIPO_CONTRATO
+                       , P_COD_INSTITUICAO                      -- PI_COD_INSTITUICAO
+                       , 'N'                                    -- PI_COMMIT
+                       , P_IND_ERRO                             -- PO_IND_ERRO
+                       , P_MSG_RETORNO                          -- PO_MSG_RETORNO
+                       , R_AP.COD_TIPO_ATUACAO                  -- PI_COD_TIPO_ATUACAO
+                       , V_QTD_HORAS_TRABALHADAS                -- PI_QTD_HORAS_TRABALHADAS
+                       , 'N'                                    -- PI_IND_ENSINO_DISTANCIA
+                       , V_QTDE_DIAS_TRAB                       -- PI_QTD_DIAS_TRABALHADOS
+                       , NULL);                                 -- PI_QTD_HORAS_TEORICO
+          --
+          IF P_IND_ERRO <> '0'
+          THEN
+            RAISE ERR_PREVISTO;
+          END IF;
+          --
+          V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+          --
+          IF MOD(V_QTD_REG_GRAVADOS, 1000) = 0 AND
+             P_COMMIT = 'S'
+          THEN
+            COMMIT;
+          END IF;
+          --
+          FETCH C_AP
+            INTO R_AP;
+          --
+        END LOOP;
+        --
+        P_MSG_RETORNO := 'QTDE DE REGISTROS ENVIADOS AO RH: ' || V_CONT_DESTINO_RH || CHR(13) || 'QTDE DE REGISTROS ENVIADOS AO FIN: ' || V_CONT_DESTINO_FIN || CHR(13) || 'QTDE DE REGISTROS NÃO PERTENCENTES AOS TIPOS DE CURSO GRADUACAO E POLITECNICO: ' || V_QTDE_OUTROS_TP_CURSOS;
+        --
+        --          DBMS_OUTPUT.PUT_LINE(P_MSG_RETORNO);
+        --
+        BEGIN
+          --
+          BEGIN
+            V_COD_INSTITUICAO_FILTRO := TO_NUMBER(P_COD_INSTITUICAO);
+          EXCEPTION
+            WHEN OTHERS THEN
+              V_COD_INSTITUICAO_FILTRO := NULL;
+          END;
+          --
+          -- INCLUI O SISTÉTICO DO PROCESSO
+          --
+          V_POSICAO := 200;
+          --
+          INSERT INTO SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+            (DT_MES_ANO_COMPETENCIA
+            ,NOM_PROCESSO
+            ,IND_TIPO_PROCESSO
+             --                      , COD_PROFESSOR
+            ,NUM_SEQ_DADOS_PROFESSOR
+            ,COD_CAMPUS
+            ,COD_TIPO_CURSO
+            ,QTD_GRAVADOS_IP
+            ,DT_INICIO_GERACAO
+            ,DT_FIM_GERACAO
+            ,IND_RETORNO
+            ,TXT_MSG_PROCESSO
+            ,TOTAL_REGS_RUBRICA_1
+            ,TOTAL_REGS_RUBRICA_2
+            ,TOTAL_HORAS_RUBRICA_1
+            ,TOTAL_HORAS_RUBRICA_2
+            ,QTD_REGS_DESTINO_1
+            ,QTD_REGS_DESTINO_2
+            ,CICLO
+            ,IND_TIPO_CONTRATO
+            ,COD_USUARIO_LOG
+            ,COD_INSTITUICAO)
+          VALUES
+            (P_DT_COMPETENCIA
+            ,'PRO_APURACAO_ATUACAO_FIXA'
+            ,P_IND_TIPO_PROCESSO
+             --                      , P_COD_PROFESSOR
+            ,P_NUM_SEQ_DADOS_PROFESSOR
+            ,P_COD_CAMPUS
+            ,P_COD_TIPO_CURSO
+            ,V_CONT_GRAVADOS_IP
+            ,SYSDATE
+            ,SYSDATE
+            ,P_IND_ERRO
+            ,P_MSG_RETORNO
+            ,NULL --V_CONT_RUBRICA_CARGA_HR,
+            ,NULL --V_CONT_RUBRICA_AD_NOT,
+            ,NULL --V_QTD_CARGA_MENSAL_HR,
+            ,NULL --V_QTD_CARGA_MENSAL_AD_NOT,
+            ,V_CONT_DESTINO_RH
+            ,V_CONT_DESTINO_FIN
+            ,V_PROXIMO_CICLO
+            ,P_IND_TIPO_CONTRATO
+            ,P_COD_USUARIO
+            ,V_COD_INSTITUICAO_FILTRO);
+        EXCEPTION
+          WHEN OTHERS THEN
+            V_ERRO_ORACLE := SQLERRM;
+            P_MSG_RETORNO := 'HOUVE UMA FALHA AO INCLUIR NA TABELA "CONTROLE_PAGAMENTO_PROFESSOR".';
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        V_POSICAO := 300;
+        --
+        IF P_COMMIT = 'S'
+        THEN
+          COMMIT;
+        END IF;
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --
+      EXCEPTION
+        --
+        WHEN ERR_ADVERTENCIA THEN
+          P_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          P_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          P_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          P_MSG_RETORNO := V_POSICAO || ' - ' || SQLERRM;
+          V_ERRO_ORACLE := SQLERRM;
+          P_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+          --
+      END;
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF P_COMMIT = 'S'
+        THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF P_IND_ERRO = '2'
+        THEN
+          SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_ATUACAO_FIXA, IE: ', V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, P_MSG_RETORNO);
+        END IF;
+        --
+    END;
+    --
+    IF C_AP%ISOPEN
+    THEN
+      CLOSE C_AP;
+    END IF;
+    --
+  END PRO_APURACAO_ATUACAO_FIXA;
+  --
+  PROCEDURE PRO_APURACAO_ESPECIALIZACAO(P_DT_COMPETENCIA          IN DATE
+--                                       ,P_DT_INICIO_SELECAO       IN DATE
+--                                       ,P_DT_FIM_SELECAO          IN DATE
+                                       ,P_NUM_SEQ_DADOS_PROFESSOR IN VARCHAR2 DEFAULT NULL
+                                       ,P_COD_TIPO_CURSO          IN NUMBER DEFAULT 1
+                                       ,P_COD_CAMPUS              IN NUMBER DEFAULT NULL
+                                       ,P_IND_TIPO_PROCESSO       IN VARCHAR2 DEFAULT NULL
+                                       ,P_IND_TIPO_CONTRATO       IN VARCHAR2 DEFAULT NULL
+                                       ,P_COD_USUARIO             IN VARCHAR2
+                                       ,P_COMMIT                  IN VARCHAR2
+                                       ,P_IND_ERRO                OUT VARCHAR2
+                                       ,P_MSG_RETORNO             OUT VARCHAR2
+                                       ,P_COD_INSTITUICAO         IN VARCHAR2) IS
+    --
+    -- P_IND_TIPO_PROCESSO  (G) GERAL
+    --                      (P) PARCIAL: CHAMADA ISOLADAMENTE
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    --NOME_PADRAO             CONSTANT VARCHAR2(30) := 'CH';
+    V_ERRO_ORACLE VARCHAR2(4000);
+    --V_IND_ERRO                       VARCHAR2(1);
+    --V_MSG_RETORNO                    VARCHAR2(4000);
+    V_TXT_PARAMETROS   VARCHAR2(4000);
+    V_POSICAO          PLS_INTEGER;
+    V_DESTINO          INTEGER;
+    V_CONT_DESTINO_RH  PLS_INTEGER;
+    V_CONT_DESTINO_FIN PLS_INTEGER;
+    V_CONT_GRAVADOS_IP PLS_INTEGER;
+    --V_START                          DATE;
+    --V_QTDE_DIAS_TRAB                 NUMBER(10);
+    --V_FATOR_MULTIPLICADOR            PLS_INTEGER;
+    --V_DT_COMPETENCIA                 DATE;
+    --V_QTD_REG_LIDOS                  PLS_INTEGER;
+    V_QTD_REG_GRAVADOS PLS_INTEGER;
+    --V_QTD_REG_DESPREZADOS            PLS_INTEGER;
+    V_QTDE_OUTROS_TP_CURSOS PLS_INTEGER;
+    --V_DIA_INI                        PLS_INTEGER;
+    --V_DIA_FIM                        PLS_INTEGER;
+    V_PROXIMO_CICLO       PLS_INTEGER;
+    V_QTDE_HORA_MOVIMENTO NUMBER(12, 2);
+    V_VALOR_MOVIMENTO     NUMBER(12, 2);
+    --V_NUM_SEQ_MOVIMENTO              NUMBER(12);
+    V_ACHOU          PLS_INTEGER;
+    V_CURSO_EXTENSAO VARCHAR2(1);
+    --V_COD_CURSO                      NUMBER(10);
+    --V_COD_CURSO_EXTENSAO             NUMBER(10);
+    --V_QTDE_HORAS_MOVIMENTO           NUMBER(12,2);
+    --V_NUM_SEQ_TURMA                  NUMBER(10);
+    --V_COD_TURMA_EXTENSAO             NUMBER(10);
+    V_COD_TIPO_RUBRICA       PLS_INTEGER;
+    V_COD_INSTITUICAO_FILTRO NUMBER(6, 0);
+    --
+    V_DT_INI_SELECAO_PAG     DATE;
+    V_DT_FIM_SELECAO_PAG     DATE;
+    --
+    V_DT_INI_SELECAO_DESC    DATE;
+    V_DT_FIM_SELECAO_DESC    DATE;
+    --
+    CURSOR C_AP IS
+    --
+    -- Especialização por Grupo - Forma ANTIGA de alocação
+    --
+      SELECT AP.COD_PROFESSOR
+            ,DP.NUM_SEQ_DADOS_PROFESSOR
+            ,T.NUM_SEQ_TURMA
+            ,C.COD_TIPO_CURSO
+            ,AP.DT_INICIO_ALOCACAO
+            ,T.COD_CAMPUS
+            ,T.COD_TURNO
+            ,T.COD_CURSO
+            ,AP.NUM_SEQ_ALOCACAO
+            ,DT.QTD_TEMPOS
+            ,NVL(AP.VAL_HORA_AULA, VHA.VAL_HORA_AULA) VALOR_HORA
+            ,P.NUM_MATRICULA
+            ,DP.NOM_PROFESSOR
+            ,P.IND_TIPO_CONTRATO
+            ,P.PERCENTUAL_APRIMORAMENTO
+            ,DP.COD_BANCO
+            ,DP.COD_AGENCIA
+            ,DP.COD_AGENCIA_DV
+            ,DP.COD_CONTA_CORRENTE
+            ,DP.COD_CONTA_CORRENTE_DV
+            ,P.COD_CATEGORIA_PROFESSOR
+            ,DP.CPF_PROFESSOR
+            ,CA.COD_INSTITUICAO
+            ,'P' TIPO_INFO -- ESPECIALIZAÇÃO
+        FROM SIA.TURMA              T
+            ,SIA.DATA_TURMA         DT
+            ,SIA.ALOCACAO_PROFESSOR AP
+            ,SIA.CURSO              C
+            ,SIA.PROFESSOR          P
+            ,SIA.DADOS_PROFESSOR    DP
+            ,SIA.GRUPO_CURSO        GC
+            ,SIA.VALOR_HORA_AULA    VHA
+            ,SIA.CAMPUS             CA
+       WHERE T.NUM_SEQ_TURMA = DT.NUM_SEQ_TURMA
+         AND T.COD_CURSO     = C.COD_CURSO
+         AND T.NUM_SEQ_GRUPO = GC.NUM_SEQ_GRUPO
+         AND T.COD_CURSO     = GC.COD_CURSO
+         AND T.COD_CAMPUS    = CA.COD_CAMPUS
+         AND DT.NUM_SEQ_DATA_TURMA = AP.NUM_SEQ_DATA_TURMA
+         AND AP.NUM_SEQ_VALOR_HORA_AULA = VHA.NUM_SEQ_VALOR_HORA_AULA(+)
+         AND P.COD_PROFESSOR = AP.COD_PROFESSOR
+         AND P.NUM_SEQ_DADOS_PROFESSOR = DP.NUM_SEQ_DADOS_PROFESSOR
+         AND AP.DT_PAGAMENTO IS NULL
+         AND (AP.VAL_HORA_AULA IS NOT NULL OR VHA.VAL_HORA_AULA IS NOT NULL)
+         AND C.COD_TIPO_CURSO          = 1
+         AND GC.IND_SITUACAO_GRUPO     = '3'
+         AND NVL(IND_SUBSTITUICAO_PROF, 'N') = 'N'
+         AND GC.QTD_VAGAS_OCUPADAS     > 0
+         AND T.IND_PAGAMENTO           = 'S'
+         AND TRUNC(AP.DT_INICIO_ALOCACAO) BETWEEN TRUNC(V_DT_INI_SELECAO_PAG) AND TRUNC(V_DT_FIM_SELECAO_PAG)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR DP.NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_CAMPUS IS NULL OR T.COD_CAMPUS = P_COD_CAMPUS)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR P.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+         AND CA.COD_INSTITUICAO = P_COD_INSTITUICAO
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND P.IND_TIPO_SALARIO IN ('H','M')
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = P.NUM_MATRICULA)
+      --
+      UNION ALL
+      --
+      -- Especialização por Período Acadêmico - Forma NOVA de alocação
+      --
+      SELECT AP.COD_PROFESSOR
+            ,DP.NUM_SEQ_DADOS_PROFESSOR
+            ,T.NUM_SEQ_TURMA
+            ,C.COD_TIPO_CURSO
+            ,AP.DT_INICIO_ALOCACAO
+            ,T.COD_CAMPUS
+            ,T.COD_TURNO
+            ,T.COD_CURSO
+            ,AP.NUM_SEQ_ALOCACAO
+            ,DT.QTD_TEMPOS
+            ,NVL(AP.VAL_HORA_AULA, VHA.VAL_HORA_AULA) VALOR_HORA
+            ,P.NUM_MATRICULA
+            ,DP.NOM_PROFESSOR
+            ,P.IND_TIPO_CONTRATO
+            ,P.PERCENTUAL_APRIMORAMENTO
+            ,DP.COD_BANCO
+            ,DP.COD_AGENCIA
+            ,DP.COD_AGENCIA_DV
+            ,DP.COD_CONTA_CORRENTE
+            ,DP.COD_CONTA_CORRENTE_DV
+            ,P.COD_CATEGORIA_PROFESSOR
+            ,DP.CPF_PROFESSOR
+            ,CA.COD_INSTITUICAO
+            ,'P' TIPO_INFO -- ESPECIALIZAÇÃO
+        FROM SIA.TURMA              T
+            ,SIA.DATA_TURMA         DT
+            ,SIA.ALOCACAO_PROFESSOR AP
+            ,SIA.CURSO              C
+            ,SIA.PROFESSOR          P
+            ,SIA.DADOS_PROFESSOR    DP
+            ,SIA.VALOR_HORA_AULA    VHA
+            ,SIA.CAMPUS             CA
+       WHERE T.NUM_SEQ_TURMA = DT.NUM_SEQ_TURMA
+         AND T.COD_CURSO     = C.COD_CURSO
+         AND T.COD_CAMPUS    = CA.COD_CAMPUS
+         AND DT.NUM_SEQ_DATA_TURMA = AP.NUM_SEQ_DATA_TURMA
+         AND AP.NUM_SEQ_VALOR_HORA_AULA = VHA.NUM_SEQ_VALOR_HORA_AULA(+)
+         AND P.COD_PROFESSOR = AP.COD_PROFESSOR
+         AND P.NUM_SEQ_DADOS_PROFESSOR = DP.NUM_SEQ_DADOS_PROFESSOR
+         AND AP.DT_PAGAMENTO IS NULL
+         AND (AP.VAL_HORA_AULA IS NOT NULL OR VHA.VAL_HORA_AULA IS NOT NULL)
+         AND C.COD_TIPO_CURSO = 1
+         AND NVL(IND_SUBSTITUICAO_PROF, 'N') = 'N'
+         AND T.QTD_ALUNOS_MATRICULADOS > 0
+         AND T.IND_PAGAMENTO           = 'S'
+         AND TRUNC(AP.DT_INICIO_ALOCACAO) BETWEEN TRUNC(V_DT_INI_SELECAO_PAG) AND TRUNC(V_DT_FIM_SELECAO_PAG)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR DP.NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_CAMPUS IS NULL OR T.COD_CAMPUS = P_COD_CAMPUS)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR P.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+         --
+         -- PARA NÃO DUPLICAR PAGAMENTO
+         -- POR PERIODO ACADEMICO
+         AND T.NUM_SEQ_PERIODO_ACADEMICO IS NOT NULL
+         --
+         AND CA.COD_INSTITUICAO = P_COD_INSTITUICAO
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND P.IND_TIPO_SALARIO IN ('H','M')
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = P.NUM_MATRICULA)
+      --
+      UNION ALL
+      --
+
+      SELECT AP.COD_PROFESSOR
+            ,DP.NUM_SEQ_DADOS_PROFESSOR
+            ,T.NUM_SEQ_TURMA
+            ,C.COD_TIPO_CURSO
+            ,AP.DT_INICIO_ALOCACAO
+            ,T.COD_CAMPUS
+            ,T.COD_TURNO
+            ,T.COD_CURSO
+            ,AP.NUM_SEQ_ALOCACAO
+            ,DT.QTD_TEMPOS
+            ,NVL(AP.VAL_HORA_AULA, VHA.VAL_HORA_AULA) VALOR_HORA
+            ,P.NUM_MATRICULA
+            ,DP.NOM_PROFESSOR
+            ,P.IND_TIPO_CONTRATO
+            ,P.PERCENTUAL_APRIMORAMENTO
+            ,DP.COD_BANCO
+            ,DP.COD_AGENCIA
+            ,DP.COD_AGENCIA_DV
+            ,DP.COD_CONTA_CORRENTE
+            ,DP.COD_CONTA_CORRENTE_DV
+            ,P.COD_CATEGORIA_PROFESSOR
+            ,DP.CPF_PROFESSOR
+            ,CA.COD_INSTITUICAO
+            ,'D' TIPO_INFO -- ESPECIALIZAÇÃO
+        FROM SIA.TURMA              T
+            ,SIA.DATA_TURMA         DT
+            ,SIA.ALOCACAO_PROFESSOR AP
+            ,SIA.CURSO              C
+            ,SIA.PROFESSOR          P
+            ,SIA.DADOS_PROFESSOR    DP
+            ,SIA.GRUPO_CURSO        GC
+            ,SIA.VALOR_HORA_AULA    VHA
+            ,SIA.CAMPUS             CA
+       WHERE T.NUM_SEQ_TURMA = DT.NUM_SEQ_TURMA
+         AND T.COD_CURSO     = C.COD_CURSO
+         AND T.NUM_SEQ_GRUPO = GC.NUM_SEQ_GRUPO(+)
+         AND T.COD_CURSO     = GC.COD_CURSO(+)
+         AND T.COD_CAMPUS    = CA.COD_CAMPUS
+         AND DT.NUM_SEQ_DATA_TURMA = AP.NUM_SEQ_DATA_TURMA
+         AND AP.NUM_SEQ_VALOR_HORA_AULA = VHA.NUM_SEQ_VALOR_HORA_AULA(+)
+         AND P.COD_PROFESSOR = AP.COD_PROFESSOR
+         AND P.NUM_SEQ_DADOS_PROFESSOR = DP.NUM_SEQ_DADOS_PROFESSOR
+         AND AP.DT_PAGAMENTO IS NOT NULL
+         AND AP.DT_SOLICITACAO_DESCONTO IS NOT NULL
+         AND AP.DT_GERACAO_DESCONTO IS NULL
+         AND (AP.VAL_HORA_AULA IS NOT NULL OR VHA.VAL_HORA_AULA IS NOT NULL)
+         AND C.COD_TIPO_CURSO = 1
+         --
+         AND NVL(GC.IND_SITUACAO_GRUPO,'3') = '3'
+         AND NVL(IND_SUBSTITUICAO_PROF, 'N') = 'N'
+         --
+         AND TRUNC(AP.DT_INICIO_ALOCACAO) BETWEEN TRUNC(V_DT_INI_SELECAO_DESC) AND TRUNC(V_DT_FIM_SELECAO_DESC)
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR DP.NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_CAMPUS IS NULL OR T.COD_CAMPUS = P_COD_CAMPUS)
+         AND (P_IND_TIPO_CONTRATO IS NULL OR P.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+         AND CA.COD_INSTITUICAO = P_COD_INSTITUICAO
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND P.IND_TIPO_SALARIO IN ('H','M')
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = P.NUM_MATRICULA)
+       ORDER BY NUM_SEQ_DADOS_PROFESSOR
+               ,COD_PROFESSOR;
+    --
+    R_AP C_AP%ROWTYPE;
+    --
+    --
+  BEGIN
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --V_QTD_REG_LIDOS         := 0;
+        V_QTD_REG_GRAVADOS      := 0;
+        V_QTDE_OUTROS_TP_CURSOS := 0;
+        V_DESTINO               := 1;
+        V_CONT_DESTINO_RH       := 0;
+        V_CONT_DESTINO_FIN      := 0;
+        V_CONT_GRAVADOS_IP      := 0;
+        --
+        V_TXT_PARAMETROS := ' P_DT_COMPETENCIA   : ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || CHR(13) || ' P_NUM_SEQ_DADOS_PROFESSOR : ' || P_NUM_SEQ_DADOS_PROFESSOR || CHR(13) || ' P_COD_TIPO_CURSO   : ' || P_COD_TIPO_CURSO || CHR(13) || ' P_COD_CAMPUS       : ' || P_COD_CAMPUS || CHR(13) ||
+                            ' P_IND_TIPO_PROCESSO: ' || P_IND_TIPO_PROCESSO || CHR(13) || ' P_COD_USUARIO      : ' || P_COD_USUARIO || CHR(13) || ' P_IND_TIPO_CONTRATO: ' || P_IND_TIPO_CONTRATO || CHR(13) || ' P_COD_INSTITUICAO  : ' || P_COD_INSTITUICAO;
+        --
+        SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_ESPECIALIZACAO, IE: ' || R_AP.COD_INSTITUICAO, NULL, NULL, V_TXT_PARAMETROS, ' INICIO DE EXECUÇÃO: ' || TO_CHAR(SYSDATE, 'DD/MM/YYYY HH24:MI:SS'));
+        --
+        -- 1. VALIDA PARÂMETROS OBRIGATÓRIOS
+        --
+        V_POSICAO := 10;
+        --
+        IF P_DT_COMPETENCIA IS NULL
+        THEN
+          P_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        IF P_IND_TIPO_PROCESSO IS NULL
+        THEN
+          P_MSG_RETORNO := 'O TIPO DE PROCESSO DEVE SER INFORMADO.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        V_DT_INI_SELECAO_PAG    := TRUNC(ADD_MONTHS(TRUNC(P_DT_COMPETENCIA),-2),'MM');
+        V_DT_FIM_SELECAO_PAG    := LAST_DAY(TRUNC(ADD_MONTHS(TRUNC(P_DT_COMPETENCIA), -1),'MM'));
+        --
+        IF P_COD_INSTITUICAO = 613 THEN -- SERGIPE, PAGAR MES ATUAL TAMBEM - 26-10-2010
+           V_DT_FIM_SELECAO_PAG    := LAST_DAY(TRUNC(P_DT_COMPETENCIA,'MM'));
+        END IF;
+        --
+        V_DT_INI_SELECAO_DESC   := TRUNC(ADD_MONTHS(TRUNC(P_DT_COMPETENCIA),-3),'MM');
+        V_DT_FIM_SELECAO_DESC   := LAST_DAY(TRUNC(ADD_MONTHS(TRUNC(P_DT_COMPETENCIA), -2),'MM'));
+        --
+        IF P_COD_INSTITUICAO = 613 THEN -- SERGIPE, DESCONTAR 1 MES RETROATIVO TAMBEM - 26-10-2010
+           V_DT_FIM_SELECAO_DESC   := LAST_DAY(TRUNC(ADD_MONTHS(TRUNC(P_DT_COMPETENCIA), -1),'MM'));
+        END IF;
+
+        V_POSICAO := 20;
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_APURACAO_ESPECIALIZACAO';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'O PROCESSO "PRO_APURACAO_ESPECIALIZACAO" DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- 3. ABRE O CURSOR E CARREGA AS LINHAS NO REGISTRO ANTERIOR (R_AP_ANT)
+        --
+        V_POSICAO := 30;
+        --
+        OPEN C_AP;
+        FETCH C_AP
+          INTO R_AP;
+        --
+        IF C_AP%NOTFOUND
+        THEN
+          P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODO ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || ' NO PROCESSO DE ESPECIALIZAÇÃO.';
+          RAISE ERR_ADVERTENCIA;
+        END IF;
+        --
+        BEGIN
+          --
+          -- 4. OBTEM O PRÓXIMO CICLO DENTRO DE UMA COMPETÊNCIA.
+          --
+          V_POSICAO := 40;
+          --
+          SELECT NVL(MAX(CICLO), 0) + 1
+            INTO V_PROXIMO_CICLO
+            FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+           WHERE DT_MES_ANO_COMPETENCIA = P_DT_COMPETENCIA
+             AND COD_INSTITUICAO = P_COD_INSTITUICAO
+             AND NOM_PROCESSO = 'PRO_APURACAO_ESPECIALIZACAO';
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            P_MSG_RETORNO := 'FALHA AO RECUPERAR O PRÓXIMO CICLO DE INTERFACE PAGAMENTO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        WHILE C_AP%FOUND
+        LOOP
+          --
+          -- ATUALIZA CONTADORES
+          --
+          V_POSICAO := 50;
+          --
+          IF R_AP.IND_TIPO_CONTRATO IN ('F', 'S')
+          THEN
+            V_DESTINO         := 1;
+            V_CONT_DESTINO_RH := V_CONT_DESTINO_RH + 1;
+          ELSIF R_AP.IND_TIPO_CONTRATO = 'P'
+          THEN
+            V_DESTINO          := 2;
+            V_CONT_DESTINO_FIN := V_CONT_DESTINO_FIN + 1;
+          END IF;
+          --
+          -- FERNANDO REIS EM 12/03/2007
+          -- REQ. 7513 - A verba da pós-graduação está vindo para o SICP
+          -- com valor e horas. A verba deve ser encaminhada somente com valor.
+          --
+          --V_QTDE_HORA_MOVIMENTO := R_AP.QTD_TEMPOS;
+          V_QTDE_HORA_MOVIMENTO := 0;
+          -- FERNANDO REIS EM 12/03/2007
+          --
+          V_VALOR_MOVIMENTO := R_AP.VALOR_HORA * R_AP.QTD_TEMPOS;
+          V_CURSO_EXTENSAO  := 'N';
+          --
+          IF R_AP.TIPO_INFO = 'P' THEN    -- PAGAMENTO
+            --
+            V_COD_TIPO_RUBRICA := 24;
+            --
+          ELSIF R_AP.TIPO_INFO = 'D' THEN -- DESCONTO
+            --
+            V_COD_TIPO_RUBRICA := 48; -- DESCONTO DE PAGAMENTO INDEVIDO
+            --
+          END IF;
+          --
+          -- ATUALIZA A_INTERFACE_PAGAMENTO
+          --
+          V_POSICAO := 70;
+          --
+          GRAVA_ARQUIVO(V_COD_TIPO_RUBRICA                      -- PI_COD_TIPO_RUBRICA
+                       , P_DT_COMPETENCIA                       -- PI_DT_COMPETENCIA
+                       , V_PROXIMO_CICLO                        -- PI_PROXIMO_CICLO
+                       , 'PRO_APURACAO_ESPECIALIZACAO'          -- PI_NOM_PROCESSO
+                       , '1'                                    -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                       , V_DESTINO                              -- PI_IND_DESTINO
+                       , V_CURSO_EXTENSAO                       -- PI_IND_CURSO_EXTENSAO
+                       , R_AP.COD_PROFESSOR                     -- PI_COD_PROFESSOR
+                       , R_AP.NUM_MATRICULA                     -- PI_NUM_MATRICULA
+                       , R_AP.COD_TIPO_CURSO                    -- PI_COD_TIPO_CURSO
+                       , R_AP.COD_CURSO                         -- PI_COD_CURSO
+                       , NULL                                   -- PI_COD_CURSO_EXTENSAO
+                       , R_AP.COD_CAMPUS                        -- PI_COD_CAMPUS
+                       , R_AP.COD_TURNO                         -- PI_COD_TURNO
+                       , V_QTDE_HORA_MOVIMENTO                  -- PI_QTD_HORAS_MOVIMENTO
+                       , V_VALOR_MOVIMENTO                      -- PI_VALOR_MOVIMENTO
+                       , SYSDATE                                -- PI_DT_GERACAO
+                       , NULL                                   -- PI_DT_LIBERACAO
+                       , NULL                                   -- PI_DT_PROCESSAMENTO
+                       , NULL                                   -- PI_NUM_SEQ_SOLICITACAO
+                       , R_AP.NUM_SEQ_ALOCACAO                  -- PI_NUM_SEQ_ALOCACAO
+                       , NULL                                   -- PI_NUM_SEQ_ATUACAO
+                       , NULL                                   -- PI_MES_ANO_ATUACAO
+                       , NULL                                   -- PI_NUM_SEQ_FALTA
+                       , R_AP.PERCENTUAL_APRIMORAMENTO          -- PI_PERCENTUAL_APRIMORAMENTO
+                       , R_AP.COD_BANCO                         -- PI_COD_BANCO
+                       , R_AP.COD_AGENCIA                       -- PI_COD_AGENCIA
+                       , R_AP.COD_AGENCIA_DV                    -- PI_COD_AGENCIA_DV
+                       , R_AP.COD_CONTA_CORRENTE                -- PI_COD_CONTA_CORRENTE
+                       , R_AP.COD_CONTA_CORRENTE_DV             -- PI_COD_CONTA_CORRENTE_DV
+                       , R_AP.COD_CATEGORIA_PROFESSOR           -- PI_COD_CATEGORIA_PROFESSOR
+                       , R_AP.NUM_SEQ_TURMA                     -- PI_NUM_SEQ_TURMA
+                       , NULL                                   -- PI_COD_TURMA_EXTENSAO
+                       , R_AP.IND_TIPO_CONTRATO                 -- PI_IND_TIPO_CONTRATO
+                       , P_COD_INSTITUICAO                      -- PI_COD_INSTITUICAO
+                       , 'N'                                    -- PI_COMMIT
+                       , P_IND_ERRO                             -- PO_IND_ERRO
+                       , P_MSG_RETORNO                          -- PO_MSG_RETORNO
+                       , NULL                                   -- PI_COD_TIPO_ATUACAO
+                       , NULL                                   -- PI_QTD_HORAS_TRABALHADAS
+                       , 'N'                                    -- PI_IND_ENSINO_DISTANCIA
+                       , NULL                                   -- PI_QTD_DIAS_TRABALHADOS
+                       , NULL);                                 -- PI_QTD_HORAS_TEORICO
+          --
+          IF P_IND_ERRO <> '0' THEN
+            RAISE ERR_PREVISTO;
+          END IF;
+          --
+          -- ATUALIZA A GERACAO EM ALOCACAO PROFESSOR
+          --
+          IF R_AP.TIPO_INFO = 'P' THEN    -- PAGAMENTO
+             --
+              UPDATE SIA.ALOCACAO_PROFESSOR AP
+                 SET AP.DT_GERACAO_PAGAMENTO = SYSDATE
+               WHERE AP.NUM_SEQ_ALOCACAO = R_AP.NUM_SEQ_ALOCACAO;
+             --
+          ELSIF R_AP.TIPO_INFO = 'D' THEN    -- DESCONTO
+             --
+              UPDATE SIA.ALOCACAO_PROFESSOR AP
+                 SET AP.DT_GERACAO_DESCONTO  = SYSDATE
+               WHERE AP.NUM_SEQ_ALOCACAO = R_AP.NUM_SEQ_ALOCACAO;
+             --
+          END IF;
+          --
+          V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+          --
+          IF MOD(V_QTD_REG_GRAVADOS, 1000) = 0 AND
+             P_COMMIT = 'S'
+          THEN
+            COMMIT;
+          END IF;
+          --
+          FETCH C_AP
+            INTO R_AP;
+          --
+        END LOOP;
+        --
+        P_MSG_RETORNO := 'QTDE DE REGISTROS ENVIADOS AO RH: ' || V_CONT_DESTINO_RH || CHR(13) || 'QTDE DE REGISTROS ENVIADOS AO FIN: ' || V_CONT_DESTINO_FIN || CHR(13) || 'QTDE DE REGISTROS NÃO PERTENCENTES AOS TIPOS DE CURSO GRADUACAO E POLITECNICO: ' || V_QTDE_OUTROS_TP_CURSOS;
+        --
+        BEGIN
+          --
+          BEGIN
+            V_COD_INSTITUICAO_FILTRO := TO_NUMBER(P_COD_INSTITUICAO);
+          EXCEPTION
+            WHEN OTHERS THEN
+              V_COD_INSTITUICAO_FILTRO := NULL;
+          END;
+          -- INCLUI O SISTÉTICO DO PROCESSO
+          --
+          V_POSICAO := 200;
+          --
+          INSERT INTO SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+            (DT_MES_ANO_COMPETENCIA
+            ,NOM_PROCESSO
+            ,IND_TIPO_PROCESSO
+             --                      , COD_PROFESSOR
+            ,NUM_SEQ_DADOS_PROFESSOR
+            ,COD_CAMPUS
+            ,COD_TIPO_CURSO
+            ,QTD_GRAVADOS_IP
+            ,DT_INICIO_GERACAO
+            ,DT_FIM_GERACAO
+            ,IND_RETORNO
+            ,TXT_MSG_PROCESSO
+            ,TOTAL_REGS_RUBRICA_1
+            ,TOTAL_REGS_RUBRICA_2
+            ,TOTAL_HORAS_RUBRICA_1
+            ,TOTAL_HORAS_RUBRICA_2
+            ,QTD_REGS_DESTINO_1
+            ,QTD_REGS_DESTINO_2
+            ,CICLO
+            ,IND_TIPO_CONTRATO
+            ,COD_USUARIO_LOG
+            ,DT_INICIO_SELECAO
+            ,DT_FIM_SELECAO
+            ,COD_INSTITUICAO)
+          VALUES
+            (P_DT_COMPETENCIA
+            ,'PRO_APURACAO_ESPECIALIZACAO'
+            ,P_IND_TIPO_PROCESSO
+             --                      , P_COD_PROFESSOR
+            ,P_NUM_SEQ_DADOS_PROFESSOR
+            ,P_COD_CAMPUS
+            ,P_COD_TIPO_CURSO
+            ,V_CONT_GRAVADOS_IP
+            ,SYSDATE
+            ,SYSDATE
+            ,P_IND_ERRO
+            ,P_MSG_RETORNO
+            ,NULL --V_CONT_RUBRICA_CARGA_HR,
+            ,NULL --V_CONT_RUBRICA_AD_NOT,
+            ,NULL --V_QTD_CARGA_MENSAL_HR,
+            ,NULL --V_QTD_CARGA_MENSAL_AD_NOT,
+            ,V_CONT_DESTINO_RH
+            ,V_CONT_DESTINO_FIN
+            ,V_PROXIMO_CICLO
+            ,P_IND_TIPO_CONTRATO
+            ,P_COD_USUARIO
+            ,V_DT_INI_SELECAO_PAG
+            ,V_DT_FIM_SELECAO_PAG
+            ,V_COD_INSTITUICAO_FILTRO);
+        EXCEPTION
+          WHEN OTHERS THEN
+            V_ERRO_ORACLE := SQLERRM;
+            P_MSG_RETORNO := 'HOUVE UMA FALHA AO INCLUIR NA TABELA "CONTROLE_PAGAMENTO_PROFESSOR".';
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        V_POSICAO := 300;
+        --
+        IF P_COMMIT = 'S'
+        THEN
+          COMMIT;
+        END IF;
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --
+        SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_ESPECIALIZACAO, IE: ' || R_AP.COD_INSTITUICAO, NULL, NULL, V_TXT_PARAMETROS, ' FIM DE EXECUÇÃO: ' || TO_CHAR(SYSDATE, 'DD/MM/YYYY HH24:MI:SS'));
+        --
+      EXCEPTION
+        --
+        WHEN ERR_ADVERTENCIA THEN
+          P_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          P_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          P_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          P_MSG_RETORNO := V_POSICAO || ' - ' || SQLERRM;
+          V_ERRO_ORACLE := SQLERRM;
+          P_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+          --
+      END;
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF P_COMMIT = 'S' THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF P_IND_ERRO = '2' THEN
+          SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_ESPECIALIZACAO, IE: ' || R_AP.COD_INSTITUICAO, V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, P_MSG_RETORNO);
+        END IF;
+        --
+    END;
+    --
+    IF C_AP%ISOPEN
+    THEN
+      CLOSE C_AP;
+    END IF;
+    --
+  END PRO_APURACAO_ESPECIALIZACAO;
+  --
+
+  PROCEDURE PRO_APURACAO_EXTENSAO(P_DT_COMPETENCIA          IN DATE
+                                 ,P_NUM_SEQ_DADOS_PROFESSOR IN VARCHAR2 DEFAULT NULL
+                                 ,P_COD_TIPO_CURSO          IN NUMBER DEFAULT 1
+                                 ,P_COD_CAMPUS              IN NUMBER DEFAULT NULL
+                                 ,P_IND_TIPO_PROCESSO       IN VARCHAR2 DEFAULT NULL
+                                 ,P_IND_TIPO_CONTRATO       IN VARCHAR2 DEFAULT NULL
+                                 ,P_COD_USUARIO             IN VARCHAR2
+                                 ,P_COMMIT                  IN VARCHAR2
+                                 ,P_IND_ERRO                OUT VARCHAR2
+                                 ,P_MSG_RETORNO             OUT VARCHAR2
+                                 ,P_COD_INSTITUICAO         IN VARCHAR2) IS
+    --
+    -- P_IND_TIPO_PROCESSO  (G) GERAL
+    --                      (P) PARCIAL: CHAMADA ISOLADAMENTE
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    ERR_TRATA_ERRO           EXCEPTION;
+    ERR_PREVISTO             EXCEPTION;
+    ERR_NAO_PREVISTO         EXCEPTION;
+    ERR_ADVERTENCIA          EXCEPTION;
+    V_ERRO_ORACLE            VARCHAR2(4000);
+    V_TXT_PARAMETROS         VARCHAR2(4000);
+    --
+    V_POSICAO                PLS_INTEGER;
+    V_DESTINO                INTEGER;
+    V_CONT_DESTINO_RH        PLS_INTEGER;
+    V_CONT_DESTINO_FIN       PLS_INTEGER;
+    V_CONT_GRAVADOS_IP       PLS_INTEGER;
+    V_QTD_REG_GRAVADOS       PLS_INTEGER;
+    V_QTDE_OUTROS_TP_CURSOS  PLS_INTEGER;
+    V_PROXIMO_CICLO          PLS_INTEGER;
+    V_QTDE_HORA_MOVIMENTO    NUMBER(12,2);
+    V_VALOR_MOVIMENTO        NUMBER(12,2);
+    V_ACHOU                  PLS_INTEGER;
+    V_CURSO_EXTENSAO         VARCHAR2(1);
+    V_COD_TIPO_RUBRICA       PLS_INTEGER;
+    V_COD_INSTITUICAO_FILTRO NUMBER(6,0);
+    --
+    V_DT_INI_SELECAO_PAG     DATE;
+    V_DT_FIM_SELECAO_PAG     DATE;
+    --
+    V_DT_INI_SELECAO_DESC    DATE;
+    V_DT_FIM_SELECAO_DESC    DATE;
+    --
+    CURSOR C_AP IS
+      SELECT CE.NUM_SEQ_CALENDARIO_EXTENSAO
+           , AE.NUM_SEQ_ALOCACAO_EXTENSAO
+           , CU.COD_TIPO_CURSO
+           , CU.COD_CURSO_EXTENSAO
+           , TE.COD_TURMA_EXTENSAO
+           , TE.COD_CAMPUS
+           , AE.COD_PROFESSOR
+           , DECODE(AE.COD_PROFESSOR,NULL,EP.CHAPA,PR.NUM_MATRICULA)  NUM_MATRICULA
+           , DECODE(AE.COD_PROFESSOR,NULL,EP.CPF,DP.CPF_PROFESSOR)    CPF
+           , DECODE(AE.COD_PROFESSOR,NULL,EP.NOME,DP.NOM_PROFESSOR)   NOME
+           --
+           , DP.COD_BANCO
+           , DP.COD_AGENCIA
+           , DP.COD_AGENCIA_DV
+           , DP.COD_CONTA_CORRENTE
+           , DP.COD_CONTA_CORRENTE_DV
+           , PR.COD_CATEGORIA_PROFESSOR
+           , AE.VAL_A_PAGAR
+           , NVL(PR.IND_TIPO_CONTRATO,'F')  IND_TIPO_CONTRATO
+           , AE.DT_GERACAO_PAGAMENTO
+           , AE.DT_GERACAO_DESCONTO
+           , 'P' IND_PAGAMENTO
+      FROM SIA.TURMA_EXTENSAO      TE
+         , SIA.CURSO_EXTENSAO      CU
+         , SIA.CAMPUS              CA
+         , SIA.CALENDARIO_EXTENSAO CE
+         , SIA.ALOCACAO_EXTENSAO   AE
+         , ESTACIO.PESSOAL_ADP     EP
+         , SIA.PROFESSOR           PR
+         , SIA.DADOS_PROFESSOR     DP
+      WHERE TE.COD_TURMA_EXTENSAO          = CE.COD_TURMA_EXTENSAO
+        AND TE.COD_CURSO_EXTENSAO          = CU.COD_CURSO_EXTENSAO
+        AND TE.COD_CAMPUS                  = CA.COD_CAMPUS
+        AND CE.NUM_SEQ_CALENDARIO_EXTENSAO = AE.NUM_SEQ_CALENDARIO_EXTENSAO
+        AND TE.COD_SITUACAO_TURMA_EXTENSAO IN (4,5,6) -- Em Andamento C/Inscrições Abertas
+                                                      -- Em Andamento C/Inscrições Encerradas
+                                                      -- Encerrada
+        AND AE.NUM_MATRICULA           = EP.CHAPA(+)
+        AND AE.COD_PROFESSOR           = PR.COD_PROFESSOR(+)
+        AND PR.NUM_SEQ_DADOS_PROFESSOR = DP.NUM_SEQ_DADOS_PROFESSOR(+)
+        AND CE.DT_MES_ANO BETWEEN V_DT_INI_SELECAO_PAG
+                              AND V_DT_FIM_SELECAO_PAG
+        AND AE.DT_GERACAO_PAGAMENTO IS NULL -- NÃO TEVE PAGAMENTO
+        AND AE.IND_SUBSTITUICAO = 'N'       -- NÃO FOI EXCLUIDO
+        AND AE.VAL_A_PAGAR > 0              -- TENHA VALOR A PAGAR
+        AND TE.QTD_VAGAS_PREENCHIDAS > 0    -- COM ALUNO
+        AND (P_COD_TIPO_CURSO IS NULL    OR CU.COD_TIPO_CURSO = P_COD_TIPO_CURSO)
+        AND (P_COD_CAMPUS IS NULL        OR TE.COD_CAMPUS     = P_COD_CAMPUS)
+        AND (P_IND_TIPO_CONTRATO IS NULL OR PR.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+        AND CA.COD_INSTITUICAO = P_COD_INSTITUICAO
+
+      UNION ALL
+      -- DESCONTO
+      SELECT CE.NUM_SEQ_CALENDARIO_EXTENSAO
+           , AE.NUM_SEQ_ALOCACAO_EXTENSAO
+           , CU.COD_TIPO_CURSO
+           , CU.COD_CURSO_EXTENSAO
+           , TE.COD_TURMA_EXTENSAO
+           , TE.COD_CAMPUS
+           , AE.COD_PROFESSOR
+           , DECODE(AE.COD_PROFESSOR,NULL,EP.CHAPA,PR.NUM_MATRICULA)  NUM_MATRICULA
+           , DECODE(AE.COD_PROFESSOR,NULL,EP.CPF,DP.CPF_PROFESSOR)    CPF
+           , DECODE(AE.COD_PROFESSOR,NULL,EP.NOME,DP.NOM_PROFESSOR)   NOME
+           --
+           , DP.COD_BANCO
+           , DP.COD_AGENCIA
+           , DP.COD_AGENCIA_DV
+           , DP.COD_CONTA_CORRENTE
+           , DP.COD_CONTA_CORRENTE_DV
+           , PR.COD_CATEGORIA_PROFESSOR
+           , AE.VAL_A_PAGAR
+           , NVL(PR.IND_TIPO_CONTRATO,'F') IND_TIPO_CONTRATO
+           , AE.DT_GERACAO_PAGAMENTO
+           , AE.DT_GERACAO_DESCONTO
+           , 'D' IND_PAGAMENTO
+      FROM SIA.TURMA_EXTENSAO      TE
+         , SIA.CURSO_EXTENSAO      CU
+         , SIA.CAMPUS              CA
+         , SIA.CALENDARIO_EXTENSAO CE
+         , SIA.ALOCACAO_EXTENSAO   AE
+         , ESTACIO.PESSOAL_ADP     EP
+         , SIA.PROFESSOR           PR
+         , SIA.DADOS_PROFESSOR     DP
+      WHERE TE.COD_TURMA_EXTENSAO          = CE.COD_TURMA_EXTENSAO
+        AND TE.COD_CURSO_EXTENSAO          = CU.COD_CURSO_EXTENSAO
+        AND TE.COD_CAMPUS                  = CA.COD_CAMPUS
+        AND CE.NUM_SEQ_CALENDARIO_EXTENSAO = AE.NUM_SEQ_CALENDARIO_EXTENSAO
+        AND TE.COD_SITUACAO_TURMA_EXTENSAO IN (4,5,6) -- Em Andamento C/Inscrições Abertas
+                                                      -- Em Andamento C/Inscrições Encerradas
+                                                      -- Encerrada
+        AND AE.NUM_MATRICULA           = EP.CHAPA(+)
+        AND AE.COD_PROFESSOR           = PR.COD_PROFESSOR(+)
+        AND PR.NUM_SEQ_DADOS_PROFESSOR = DP.NUM_SEQ_DADOS_PROFESSOR(+)
+        AND CE.DT_MES_ANO BETWEEN V_DT_INI_SELECAO_DESC
+                              AND V_DT_FIM_SELECAO_DESC
+        AND AE.IND_SUBSTITUICAO = 'N'              -- NÃO FOI EXCLUIDO
+        AND AE.DT_GERACAO_PAGAMENTO IS NOT NULL    -- TEVE PAGAMENTO
+        AND AE.DT_SOLICITACAO_DESCONTO IS NOT NULL -- TEVE SOLICITAÇÃO DE DESCONTO
+        AND AE.DT_GERACAO_DESCONTO IS NULL         -- NÃO TEVE DESCONTO
+        AND AE.VAL_A_PAGAR > 0                     -- TENHA VALOR A DESCONTAR
+        AND TE.QTD_VAGAS_PREENCHIDAS > 0           -- COM ALUNO
+        AND (P_COD_CAMPUS IS NULL OR TE.COD_CAMPUS = P_COD_CAMPUS)
+        AND (P_IND_TIPO_CONTRATO IS NULL OR PR.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+        AND CA.COD_INSTITUICAO = P_COD_INSTITUICAO;
+    --
+    R_AP C_AP%ROWTYPE;
+    --
+    --
+  BEGIN
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        V_QTD_REG_GRAVADOS      := 0;
+        V_QTDE_OUTROS_TP_CURSOS := 0;
+        V_DESTINO               := 1;
+        V_CONT_DESTINO_RH       := 0;
+        V_CONT_DESTINO_FIN      := 0;
+        V_CONT_GRAVADOS_IP      := 0;
+        --
+        V_TXT_PARAMETROS := ' P_DT_COMPETENCIA   : ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || CHR(13) ||
+                            ' P_NUM_SEQ_DADOS_PROFESSOR : ' || P_NUM_SEQ_DADOS_PROFESSOR || CHR(13) ||
+                            ' P_COD_TIPO_CURSO   : ' || P_COD_TIPO_CURSO || CHR(13) ||
+                            ' P_COD_CAMPUS       : ' || P_COD_CAMPUS || CHR(13) ||
+                            ' P_IND_TIPO_PROCESSO: ' || P_IND_TIPO_PROCESSO || CHR(13) ||
+                            ' P_COD_USUARIO      : ' || P_COD_USUARIO || CHR(13) ||
+                            ' P_IND_TIPO_CONTRATO: ' || P_IND_TIPO_CONTRATO || CHR(13) ||
+                            ' P_COD_INSTITUICAO  : ' || P_COD_INSTITUICAO;
+        --
+        SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_EXTENSAO, IE: ' || P_COD_INSTITUICAO
+                            , NULL
+                            , NULL
+                            , V_TXT_PARAMETROS
+                            , ' INICIO DE EXECUÇÃO: ' || TO_CHAR(SYSDATE,'DD/MM/YYYY HH24:MI:SS'));
+        --
+        -- 1. VALIDA PARÂMETROS OBRIGATÓRIOS
+        --
+        V_POSICAO := 10;
+        --
+        IF P_DT_COMPETENCIA IS NULL THEN
+          P_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        IF P_IND_TIPO_PROCESSO IS NULL THEN
+          P_MSG_RETORNO := 'O TIPO DE PROCESSO DEVE SER INFORMADO.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        V_POSICAO := 20;
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_APURACAO_EXTENSAO';
+          --
+        EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'O PROCESSO "PRO_APURACAO_EXTENSAO" DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- 3. ABRE O CURSOR E CARREGA AS LINHAS NO REGISTRO ANTERIOR (R_AP_ANT)
+        --
+        V_POSICAO := 30;
+
+        V_DT_INI_SELECAO_PAG   := TRUNC(ADD_MONTHS(TRUNC(P_DT_COMPETENCIA), -2), 'MM');
+        V_DT_FIM_SELECAO_PAG   := TRUNC(ADD_MONTHS(TRUNC(P_DT_COMPETENCIA), -1), 'MM');
+        --
+        V_DT_INI_SELECAO_DESC  := TRUNC(ADD_MONTHS(TRUNC(P_DT_COMPETENCIA), -3), 'MM');
+        V_DT_FIM_SELECAO_DESC  := TRUNC(ADD_MONTHS(TRUNC(P_DT_COMPETENCIA), -2), 'MM');
+        --
+        OPEN C_AP;
+        FETCH C_AP
+          INTO R_AP;
+        --
+        IF C_AP%NOTFOUND THEN
+          P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODO ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || ' NO PROCESSO DE EXTENSÃO.';
+          RAISE ERR_ADVERTENCIA;
+        END IF;
+        --
+        BEGIN
+          --
+          -- 4. OBTEM O PRÓXIMO CICLO DENTRO DE UMA COMPETÊNCIA.
+          --
+          V_POSICAO := 40;
+          --
+          SELECT NVL(MAX(CICLO), 0) + 1
+            INTO V_PROXIMO_CICLO
+            FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+           WHERE DT_MES_ANO_COMPETENCIA = P_DT_COMPETENCIA
+             AND COD_INSTITUICAO = P_COD_INSTITUICAO
+             AND NOM_PROCESSO = 'PRO_APURACAO_EXTENSAO';
+          --
+        EXCEPTION
+        WHEN OTHERS THEN
+            P_MSG_RETORNO := 'FALHA AO RECUPERAR O PRÓXIMO CICLO DE INTERFACE PAGAMENTO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        WHILE C_AP%FOUND
+        LOOP
+          --
+          -- ATUALIZA CONTADORES
+          --
+          V_POSICAO := 50;
+          --
+          IF R_AP.IND_TIPO_CONTRATO IN ('F', 'S') THEN
+            V_DESTINO         := 1;
+            V_CONT_DESTINO_RH := V_CONT_DESTINO_RH + 1;
+          ELSIF R_AP.IND_TIPO_CONTRATO = 'P' THEN
+            V_DESTINO          := 2;
+            V_CONT_DESTINO_FIN := V_CONT_DESTINO_FIN + 1;
+          END IF;
+
+          --
+          IF R_AP.IND_PAGAMENTO = 'P' THEN
+             -- PAGAMANETO
+             V_COD_TIPO_RUBRICA := 31; -- GRATIFICAÇÃO DE EXTENSÃO
+          ELSIF R_AP.IND_PAGAMENTO = 'D' THEN
+             -- DESCONTO
+             V_COD_TIPO_RUBRICA := 48; -- DESCONTO DE PAGAMENTO INDEVIDO
+          END IF;
+          --
+          V_CURSO_EXTENSAO      := 'S';
+          V_QTDE_HORA_MOVIMENTO := 0;
+          V_VALOR_MOVIMENTO     := R_AP.VAL_A_PAGAR;
+          --
+          --
+          -- ATUALIZA A_INTERFACE_PAGAMENTO
+          --
+          V_POSICAO := 70;
+          --
+          GRAVA_ARQUIVO(V_COD_TIPO_RUBRICA                      -- PI_COD_TIPO_RUBRICA
+                       , P_DT_COMPETENCIA                       -- PI_DT_COMPETENCIA
+                       , V_PROXIMO_CICLO                        -- PI_PROXIMO_CICLO
+                       , 'PRO_APURACAO_EXTENSAO'                -- PI_NOM_PROCESSO
+                       , '1'                                    -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                       , V_DESTINO                              -- PI_IND_DESTINO
+                       , V_CURSO_EXTENSAO                       -- PI_IND_CURSO_EXTENSAO
+                       , R_AP.COD_PROFESSOR                     -- PI_COD_PROFESSOR
+                       , R_AP.NUM_MATRICULA                     -- PI_NUM_MATRICULA
+                       , R_AP.COD_TIPO_CURSO                    -- PI_COD_TIPO_CURSO
+                       , NULL                                   -- PI_COD_CURSO
+                       , R_AP.COD_CURSO_EXTENSAO                -- PI_COD_CURSO_EXTENSAO
+                       , R_AP.COD_CAMPUS                        -- PI_COD_CAMPUS
+                       , NULL                                   -- PI_COD_TURNO
+                       , V_QTDE_HORA_MOVIMENTO                  -- PI_QTD_HORAS_MOVIMENTO
+                       , V_VALOR_MOVIMENTO                      -- PI_VALOR_MOVIMENTO
+                       , SYSDATE                                -- PI_DT_GERACAO
+                       , NULL                                   -- PI_DT_LIBERACAO
+                       , NULL                                   -- PI_DT_PROCESSAMENTO
+                       , NULL                                   -- PI_NUM_SEQ_SOLICITACAO
+                       , NULL                                   -- PI_NUM_SEQ_ALOCACAO
+                       , NULL                                   -- PI_NUM_SEQ_ATUACAO
+                       , NULL                                   -- PI_MES_ANO_ATUACAO
+                       , NULL                                   -- PI_NUM_SEQ_FALTA
+                       , NULL                                   -- PI_PERCENTUAL_APRIMORAMENTO
+                       , R_AP.COD_BANCO                         -- PI_COD_BANCO
+                       , R_AP.COD_AGENCIA                       -- PI_COD_AGENCIA
+                       , R_AP.COD_AGENCIA_DV                    -- PI_COD_AGENCIA_DV
+                       , R_AP.COD_CONTA_CORRENTE                -- PI_COD_CONTA_CORRENTE
+                       , R_AP.COD_CONTA_CORRENTE_DV             -- PI_COD_CONTA_CORRENTE_DV
+                       , R_AP.COD_CATEGORIA_PROFESSOR           -- PI_COD_CATEGORIA_PROFESSOR
+                       , NULL                                   -- PI_NUM_SEQ_TURMA
+                       , R_AP.COD_TURMA_EXTENSAO                -- PI_COD_TURMA_EXTENSAO
+                       , R_AP.IND_TIPO_CONTRATO                 -- PI_IND_TIPO_CONTRATO
+                       , P_COD_INSTITUICAO                      -- PI_COD_INSTITUICAO
+                       , 'N'                                    -- PI_COMMIT
+                       , P_IND_ERRO                             -- PO_IND_ERRO
+                       , P_MSG_RETORNO                          -- PO_MSG_RETORNO
+                       , NULL                                   -- PI_COD_TIPO_ATUACAO
+                       , NULL                                   -- PI_QTD_HORAS_TRABALHADAS
+                       , 'N'                                    -- PI_IND_ENSINO_DISTANCIA
+                       , NULL                                   -- PI_QTD_DIAS_TRABALHADOS
+                       , NULL);                                 -- PI_QTD_HORAS_TEORICO
+          --
+          IF P_IND_ERRO <> '0' THEN
+            RAISE ERR_PREVISTO;
+          END IF;
+          --
+          -- ATUALIZA A GERACAO EM ALOCACAO PROFESSOR
+          IF R_AP.IND_PAGAMENTO = 'P' THEN
+              --
+              UPDATE SIA.ALOCACAO_EXTENSAO AE
+                 SET AE.DT_GERACAO_PAGAMENTO  = SYSDATE
+               WHERE AE.NUM_SEQ_ALOCACAO_EXTENSAO = R_AP.NUM_SEQ_ALOCACAO_EXTENSAO;
+              --
+              UPDATE SIA.TURMA_EXTENSAO TE
+                 SET TE.DT_GERACAO_PAGAMENTO = SYSDATE
+               WHERE TE.COD_TURMA_EXTENSAO = R_AP.COD_TURMA_EXTENSAO
+                 AND TE.DT_GERACAO_PAGAMENTO IS NULL;
+              --
+          ELSIF R_AP.IND_PAGAMENTO = 'D' THEN
+              --
+              UPDATE SIA.ALOCACAO_EXTENSAO AE
+                 SET AE.DT_GERACAO_DESCONTO  = SYSDATE
+               WHERE AE.NUM_SEQ_ALOCACAO_EXTENSAO = R_AP.NUM_SEQ_ALOCACAO_EXTENSAO;
+              --
+          END IF;
+
+          --
+          V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+          --
+          IF MOD(V_QTD_REG_GRAVADOS, 1000) = 0 AND
+             P_COMMIT = 'S'
+          THEN
+            COMMIT;
+          END IF;
+          --
+          FETCH C_AP
+            INTO R_AP;
+          --
+        END LOOP;
+        --
+        P_MSG_RETORNO := 'QTDE DE REGISTROS ENVIADOS AO RH: ' || V_CONT_DESTINO_RH || CHR(13) || 'QTDE DE REGISTROS ENVIADOS AO FIN: ' || V_CONT_DESTINO_FIN || CHR(13) || 'QTDE DE REGISTROS NÃO PERTENCENTES O TIPO DE CURSO EXTENSÃO: ' || V_QTDE_OUTROS_TP_CURSOS;
+        --
+        BEGIN
+          --
+          BEGIN
+            V_COD_INSTITUICAO_FILTRO := TO_NUMBER(P_COD_INSTITUICAO);
+          EXCEPTION
+          WHEN OTHERS THEN
+              V_COD_INSTITUICAO_FILTRO := NULL;
+          END;
+          -- INCLUI O SISTÉTICO DO PROCESSO
+          --
+          V_POSICAO := 200;
+          --
+          INSERT INTO SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+            (DT_MES_ANO_COMPETENCIA
+            ,NOM_PROCESSO
+            ,IND_TIPO_PROCESSO
+             --                      , COD_PROFESSOR
+            ,NUM_SEQ_DADOS_PROFESSOR
+            ,COD_CAMPUS
+            ,COD_TIPO_CURSO
+            ,QTD_GRAVADOS_IP
+            ,DT_INICIO_GERACAO
+            ,DT_FIM_GERACAO
+            ,IND_RETORNO
+            ,TXT_MSG_PROCESSO
+            ,TOTAL_REGS_RUBRICA_1
+            ,TOTAL_REGS_RUBRICA_2
+            ,TOTAL_HORAS_RUBRICA_1
+            ,TOTAL_HORAS_RUBRICA_2
+            ,QTD_REGS_DESTINO_1
+            ,QTD_REGS_DESTINO_2
+            ,CICLO
+            ,IND_TIPO_CONTRATO
+            ,COD_USUARIO_LOG
+            ,DT_INICIO_SELECAO
+            ,DT_FIM_SELECAO
+            ,COD_INSTITUICAO)
+          VALUES
+            (P_DT_COMPETENCIA
+            ,'PRO_APURACAO_EXTENSAO'
+            ,P_IND_TIPO_PROCESSO
+             --                      , P_COD_PROFESSOR
+            ,NULL--P_NUM_SEQ_DADOS_PROFESSOR
+            ,P_COD_CAMPUS
+            ,P_COD_TIPO_CURSO
+            ,V_CONT_GRAVADOS_IP
+            ,SYSDATE
+            ,SYSDATE
+            ,P_IND_ERRO
+            ,P_MSG_RETORNO
+            ,NULL --V_CONT_RUBRICA_CARGA_HR,
+            ,NULL --V_CONT_RUBRICA_AD_NOT,
+            ,NULL --V_QTD_CARGA_MENSAL_HR,
+            ,NULL --V_QTD_CARGA_MENSAL_AD_NOT,
+            ,V_CONT_DESTINO_RH
+            ,V_CONT_DESTINO_FIN
+            ,V_PROXIMO_CICLO
+            ,P_IND_TIPO_CONTRATO
+            ,P_COD_USUARIO
+            ,TRUNC(ADD_MONTHS(P_DT_COMPETENCIA,-2),'MM')
+            ,LAST_DAY(ADD_MONTHS(P_DT_COMPETENCIA,-1))
+            ,V_COD_INSTITUICAO_FILTRO);
+        EXCEPTION
+        WHEN OTHERS THEN
+            V_ERRO_ORACLE := SQLERRM;
+            P_MSG_RETORNO := 'HOUVE UMA FALHA AO INCLUIR NA TABELA "CONTROLE_PAGAMENTO_PROFESSOR".';
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        V_POSICAO := 300;
+        --
+        IF P_COMMIT = 'S' THEN
+          COMMIT;
+        END IF;
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --
+        SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_EXTENSAO, IE: ' || P_COD_INSTITUICAO
+                           , NULL
+                           , NULL
+                           , V_TXT_PARAMETROS
+                           , ' FIM DE EXECUÇÃO: ' || TO_CHAR(SYSDATE, 'DD/MM/YYYY HH24:MI:SS'));
+        --
+      EXCEPTION
+        --
+        WHEN ERR_ADVERTENCIA THEN
+          P_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          P_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          P_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          P_MSG_RETORNO := V_POSICAO || ' - ' || SQLERRM;
+          V_ERRO_ORACLE := SQLERRM;
+          P_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+          --
+      END;
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF P_COMMIT = 'S' THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF P_IND_ERRO = '2' THEN
+          SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_EXTENSAO, IE: ' || P_COD_INSTITUICAO, V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, P_MSG_RETORNO);
+        END IF;
+        --
+    END;
+    --
+    IF C_AP%ISOPEN THEN
+      CLOSE C_AP;
+    END IF;
+    --
+  END PRO_APURACAO_EXTENSAO;
+  --
+
+
+  PROCEDURE PRO_APURACAO_TURMA_ONLINE(P_DT_COMPETENCIA          IN DATE
+                                     ,P_NUM_SEQ_DADOS_PROFESSOR IN VARCHAR2 DEFAULT NULL
+                                     ,P_COD_TIPO_CURSO          IN NUMBER DEFAULT NULL
+                                     ,P_COD_CAMPUS              IN NUMBER DEFAULT NULL
+                                     ,P_IND_TIPO_PROCESSO       IN VARCHAR2 DEFAULT NULL
+                                     ,P_IND_TIPO_CONTRATO       IN VARCHAR2 DEFAULT NULL
+                                     ,P_COD_USUARIO             IN VARCHAR2
+                                     ,P_COMMIT                  IN VARCHAR2
+                                     ,P_IND_ERRO                OUT VARCHAR2
+                                     ,P_MSG_RETORNO             OUT VARCHAR2
+                                     ,P_COD_INSTITUICAO         IN VARCHAR2) IS
+    --
+    -- P_IND_TIPO_PROCESSO  (G) GERAL
+    --                      (P) PARCIAL: CHAMADA ISOLADAMENTE
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    --NOME_PADRAO             CONSTANT VARCHAR2(30) := 'CH';
+    V_ERRO_ORACLE VARCHAR2(4000);
+    --V_IND_ERRO                       VARCHAR2(1);
+    --V_MSG_RETORNO                    VARCHAR2(4000);
+    V_TXT_PARAMETROS   VARCHAR2(4000);
+    V_POSICAO          PLS_INTEGER;
+    V_DESTINO          INTEGER;
+    V_CONT_DESTINO_RH  PLS_INTEGER;
+    V_CONT_DESTINO_FIN PLS_INTEGER;
+    V_CONT_GRAVADOS_IP PLS_INTEGER;
+    --V_START                          DATE;
+    V_QTDE_DIAS_TRAB NUMBER(10);
+    --V_FATOR_MULTIPLICADOR            PLS_INTEGER;
+    --V_DT_COMPETENCIA                 DATE;
+    --V_QTD_REG_LIDOS                  PLS_INTEGER;
+    V_QTD_REG_GRAVADOS PLS_INTEGER;
+    --V_QTD_REG_DESPREZADOS            PLS_INTEGER;
+    V_QTDE_OUTROS_TP_CURSOS PLS_INTEGER;
+    V_DIA_INI               PLS_INTEGER;
+    V_DIA_FIM               PLS_INTEGER;
+    V_PROXIMO_CICLO         PLS_INTEGER;
+    V_QTDE_HORA_MOVIMENTO   NUMBER(12, 2);
+    V_VALOR_MOVIMENTO       NUMBER(12, 2);
+    --V_NUM_SEQ_MOVIMENTO              NUMBER(12);
+    V_ACHOU          PLS_INTEGER;
+    V_CURSO_EXTENSAO VARCHAR2(1);
+    --V_COD_CURSO                      NUMBER(10);
+    --V_COD_CURSO_EXTENSAO             NUMBER(10);
+    --V_QTDE_HORAS_MOVIMENTO           NUMBER(12,2);
+    --V_NUM_SEQ_TURMA                  NUMBER(10);
+    --V_COD_TURMA_EXTENSAO             NUMBER(10);
+    --V_QTD_HORAS_TRABALHADAS          SIA.A_INTERFACE_PAGAMENTO.QTD_HORAS_TRABALHADAS%TYPE;
+    V_COD_TIPO_RUBRICA       PLS_INTEGER;
+    V_COD_INSTITUICAO_FILTRO NUMBER(6, 0);
+    --
+    CURSOR C_AP IS
+      SELECT VAP.COD_PROFESSOR
+            ,VAP.NUM_SEQ_DADOS_PROFESSOR
+            ,VAP.TIPO_CURSO COD_TIPO_CURSO
+            ,VAP.DT_INICIO_ALOCACAO
+            ,VAP.DT_FIM_ALOCACAO
+            ,VAP.HORA_INI
+            ,VAP.HORA_FIM
+            ,VAP.COD_CAMPUS
+            ,VAP.COD_CURSO
+            ,VAP.COD_TURNO
+            ,NULL AS COD_CURSO_EXTENSAO
+            ,VAP.IND_SUBSTITUICAO_PROF
+            ,VAP.DT_SUBSTITUICAO_PROF
+            ,VAP.NUM_MATRICULA
+            ,VAP.NUM_SEQ_PERIODO_ACADEMICO
+            ,VAP.PK_TURMA AS NUM_SEQ_TURMA
+            ,VAP.NUM_SEQ_ALOCACAO
+            ,VAP.IND_TIPO_CONTRATO
+            ,VAP.PERCENTUAL_APRIMORAMENTO
+            ,VAP.COD_BANCO
+            ,VAP.COD_AGENCIA
+            ,VAP.COD_AGENCIA_DV
+            ,VAP.CONTA_CORRENTE
+            ,VAP.CONTA_CORRENTE_DV
+            ,VAP.COD_CATEGORIA_PROFESSOR
+            ,VAP.CPF_PROFESSOR
+            ,VAP.IND_ENSINO_DISTANCIA
+-- FERNANDO REIS EM 02/09/2008
+            ,VAP.CARGA_SEMANAL
+            ,VAP.CARGA_SEMANAL_GC
+-- FERNANDO REIS EM 02/09/2008
+            ,VAP.NUM_SEQ_COMPOSICAO
+            ,VAP.HH_INICIO_AULA
+            ,VAP.HH_FIM_AULA
+            ,VAP.VAL_HORA_AULA
+--            ,VAP.IND_TELEPRESENCIAL -- RETIRAR TURMA TELEPRESENCIAL
+            ,VAP.COD_INSTITUICAO
+            ,TU.QTD_HORAS_TEORICO
+        FROM SIA.V_ALOCACAO_PROFESSOR VAP
+            ,SIA.TURMA TU
+       WHERE VAP.PK_TURMA = TU.NUM_SEQ_TURMA
+         AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(VAP.DT_INICIO_ALOCACAO, 'MM') AND TRUNC(VAP.DT_FIM_ALOCACAO, 'MM')
+         AND NVL(VAP.IND_SUBSTITUICAO_PROF, 'N') = 'N'
+         AND NVL(VAP.QTD_ALUNOS_MATRICULADOS, 0) > 0
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR VAP.NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR VAP.TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR VAP.COD_CAMPUS = P_COD_CAMPUS)
+         AND VAP.COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND VAP.IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NVL(VAP.IND_PAGAMENTO_ALOCACAO,'S') = 'S' -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND (P_IND_TIPO_CONTRATO IS NULL OR VAP.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+         --
+         AND VAP.TABELA = 'HTV' -- TURMA VIRTUAL
+         --
+         AND VAP.TIPO_CURSO IN (4,11) -- TIPOS DE CURSO GRADUAÇÃO E GRADUAÇÃO TECNOLÓGICA
+         --
+         -- BLOQUEIO DE PERMISSÃO DE PAGAMENTO PARA UMA DETERMINADA COMPETÊNCIA (MALUQUINHA)
+         AND NOT EXISTS (SELECT 1
+                FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+               WHERE VP.COD_TIPO_CURSO = VAP.TIPO_CURSO
+                 AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                 AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(VP.DT_INI_VIGENCIA, 'MM') AND TRUNC(VP.DT_FIM_VIGENCIA, 'MM')
+                 AND ((VP.COD_CURSO IS NULL AND VAP.COD_CURSO = VAP.COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VAP.COD_CURSO = VP.COD_CURSO)))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND VAP.IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = VAP.NUM_MATRICULA)
+         --
+       ORDER BY NUM_SEQ_DADOS_PROFESSOR
+               ,COD_PROFESSOR
+               ,NUM_SEQ_ALOCACAO;
+    --
+    R_AP C_AP%ROWTYPE;
+    --
+    --
+  BEGIN
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --V_QTD_REG_LIDOS         := 0;
+        V_QTD_REG_GRAVADOS      := 0;
+        V_QTDE_OUTROS_TP_CURSOS := 0;
+        V_DESTINO               := 1;
+        V_CONT_DESTINO_RH       := 0;
+        V_CONT_DESTINO_FIN      := 0;
+        V_CONT_GRAVADOS_IP      := 0;
+        --
+        V_TXT_PARAMETROS := ' P_DT_COMPETENCIA   : ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || CHR(13) || ' P_NUM_SEQ_DADOS_PROFESSOR : ' || P_NUM_SEQ_DADOS_PROFESSOR || CHR(13) || ' P_COD_TIPO_CURSO   : ' || P_COD_TIPO_CURSO || CHR(13) || ' P_COD_CAMPUS       : ' || P_COD_CAMPUS || CHR(13) ||
+                            ' P_IND_TIPO_PROCESSO: ' || P_IND_TIPO_PROCESSO || CHR(13) || ' P_IND_TIPO_CONTRATO: ' || P_IND_TIPO_CONTRATO || CHR(13) || ' P_COD_INSTITUICAO  : ' || P_COD_INSTITUICAO;
+        --
+        -- 1. VALIDA PARÂMETROS OBRIGATÓRIOS
+        --
+        V_POSICAO := 10;
+        --
+        IF P_DT_COMPETENCIA IS NULL
+        THEN
+          P_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        IF P_IND_TIPO_PROCESSO IS NULL
+        THEN
+          P_MSG_RETORNO := 'O TIPO DE PROCESSO DEVE SER INFORMADO.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        V_POSICAO := 20;
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_APURACAO_TURMA_ONLINE';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'O PROCESSO "PRO_APURACAO_TURMA_ONLINE" DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- 3. ABRE O CURSOR E CARREGA AS LINHAS NO REGISTRO ANTERIOR (R_AP_ANT)
+        --
+        V_POSICAO := 30;
+        --
+        OPEN C_AP;
+        FETCH C_AP
+          INTO R_AP;
+        --
+        IF C_AP%NOTFOUND
+        THEN
+          P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODO ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || ' NO PROCESSO DE TURMA ONLINE.';
+          RAISE ERR_ADVERTENCIA;
+        END IF;
+        --
+        BEGIN
+          --
+          -- 4. OBTEM O PRÓXIMO CICLO DENTRO DE UMA COMPETÊNCIA.
+          --
+          V_POSICAO := 40;
+          --
+          SELECT NVL(MAX(CICLO), 0) + 1
+            INTO V_PROXIMO_CICLO
+            FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+           WHERE DT_MES_ANO_COMPETENCIA = P_DT_COMPETENCIA
+             AND COD_INSTITUICAO = P_COD_INSTITUICAO
+             AND NOM_PROCESSO = 'PRO_APURACAO_TURMA_ONLINE';
+          --
+        EXCEPTION
+          WHEN OTHERS THEN
+            P_MSG_RETORNO := 'FALHA AO RECUPERAR O PRÓXIMO CICLO DE INTERFACE PAGAMENTO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        WHILE C_AP%FOUND
+        LOOP
+          --
+          -- ATUALIZA CONTADORES
+          --
+          V_POSICAO := 50;
+          --
+          IF R_AP.IND_TIPO_CONTRATO IN ('F', 'S')
+          THEN
+            V_DESTINO         := 1;
+            V_CONT_DESTINO_RH := V_CONT_DESTINO_RH + 1;
+          ELSIF R_AP.IND_TIPO_CONTRATO = 'P'
+          THEN
+            V_DESTINO          := 2;
+            V_CONT_DESTINO_FIN := V_CONT_DESTINO_FIN + 1;
+          END IF;
+          --
+          -- PROPORCIONAL
+          --
+          V_POSICAO := 60;
+          --
+          --
+          IF TRUNC(R_AP.DT_INICIO_ALOCACAO, 'MM') = TRUNC(P_DT_COMPETENCIA, 'MM')
+          THEN
+            --
+            V_DIA_INI := TO_NUMBER(TO_CHAR(R_AP.DT_INICIO_ALOCACAO, 'DD'));
+            --
+          ELSE
+            --
+            V_DIA_INI := 01;
+            --
+          END IF; -- IF TRUNC(R_AP.DT_INICIO_ATUACAO,'MM') = TRUNC(P_DT_COMPETENCIA,'MM') THEN
+          --
+          IF TRUNC(R_AP.DT_FIM_ALOCACAO, 'MM') = TRUNC(P_DT_COMPETENCIA, 'MM')
+          THEN
+            --
+            V_DIA_FIM := TO_NUMBER(TO_CHAR(R_AP.DT_FIM_ALOCACAO, 'DD'));
+            --
+            IF V_DIA_FIM = TO_NUMBER(TO_CHAR(LAST_DAY(R_AP.DT_FIM_ALOCACAO), 'DD'))
+            THEN
+              --
+              V_DIA_FIM := 30;
+              --
+            END IF;
+            --
+          ELSE
+            --
+            V_DIA_FIM := 30;
+            --
+          END IF; -- IF TRUNC(R_AP.DT_FIM_ATUACAO,'MM') = TRUNC(P_DT_COMPETENCIA,'MM') THEN
+          --
+          V_QTDE_DIAS_TRAB := V_DIA_FIM - V_DIA_INI + 1;
+          --
+          --
+          V_VALOR_MOVIMENTO     := 0;
+          V_QTDE_HORA_MOVIMENTO := 0;
+          -- SRD - 1436-Pagamento de Graduacao EAD.
+          V_QTDE_HORA_MOVIMENTO := ROUND((1 / 30) * V_QTDE_DIAS_TRAB, 2);
+          --
+          SELECT DECODE(R_AP.COD_CURSO_EXTENSAO, NULL, 'N', 'S')
+            INTO V_CURSO_EXTENSAO
+            FROM DUAL;
+          --
+          -- REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+          --
+          -- ATUALIZA A_INTERFACE_PAGAMENTO
+          --
+          V_POSICAO := 70;
+          --
+          -- Alterado através da SRD 1436 para utilizar a Rubrica - Curso a Distância (Código 27) 
+          V_COD_TIPO_RUBRICA := 27;
+          -- RETIRAR TURMA TELEPRESENCIAL
+/*          IF R_AP.IND_TELEPRESENCIAL = 'S' 
+          THEN
+            V_COD_TIPO_RUBRICA    := 42;
+            V_QTDE_HORA_MOVIMENTO := 1;
+          ELSE
+            V_COD_TIPO_RUBRICA := 1;
+          END IF;*/
+          --
+          GRAVA_ARQUIVO(V_COD_TIPO_RUBRICA                      -- PI_COD_TIPO_RUBRICA
+                       , P_DT_COMPETENCIA                       -- PI_DT_COMPETENCIA           (V_DT_COMPETENCIA)
+                       , V_PROXIMO_CICLO                        -- PI_PROXIMO_CICLO
+                       , 'PRO_APURACAO_TURMA_ONLINE'            -- 'PRO_2_APURACAO_ALOCACAO'          -- PI_NOM_PROCESSO
+                       , '1'                                    -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                       , V_DESTINO                              -- PI_IND_DESTINO
+                       , V_CURSO_EXTENSAO                       -- PI_IND_CURSO_EXTENSAO
+                       , R_AP.COD_PROFESSOR                     -- PI_COD_PROFESSOR
+                       , R_AP.NUM_MATRICULA                     -- PI_NUM_MATRICULA
+                       , R_AP.COD_TIPO_CURSO                    -- PI_COD_TIPO_CURSO
+                       , R_AP.COD_CURSO                         -- PI_COD_CURSO
+                       , NULL                                   -- PI_COD_CURSO_EXTENSAO
+                       , R_AP.COD_CAMPUS                        -- PI_COD_CAMPUS
+                       , R_AP.COD_TURNO                         -- PI_COD_TURNO
+                       , V_QTDE_HORA_MOVIMENTO                  -- PI_QTD_HORAS_MOVIMENTO
+                       , NULL                                   -- PI_VALOR_MOVIMENTO
+                       , SYSDATE                                -- PI_DT_GERACAO
+                       , NULL                                   -- PI_DT_LIBERACAO
+                       , NULL                                   -- PI_DT_PROCESSAMENTO
+                       , NULL                                   -- PI_NUM_SEQ_SOLICITACAO
+                       , R_AP.NUM_SEQ_ALOCACAO                  -- PI_NUM_SEQ_ALOCACAO
+                       , NULL                                   -- PI_NUM_SEQ_ATUACAO
+                       , NULL                                   -- PI_MES_ANO_ATUACAO
+                       , NULL                                   -- PI_NUM_SEQ_FALTA
+                       , R_AP.PERCENTUAL_APRIMORAMENTO          -- PI_PERCENTUAL_APRIMORAMENTO
+                       , R_AP.COD_BANCO                         -- PI_COD_BANCO
+                       , R_AP.COD_AGENCIA                       -- PI_COD_AGENCIA
+                       , R_AP.COD_AGENCIA_DV                    -- PI_COD_AGENCIA_DV
+                       , R_AP.CONTA_CORRENTE                    -- PI_COD_CONTA_CORRENTE
+                       , R_AP.CONTA_CORRENTE_DV                 -- PI_COD_CONTA_CORRENTE_DV
+                       , R_AP.COD_CATEGORIA_PROFESSOR           -- PI_COD_CATEGORIA_PROFESSOR
+                       , R_AP.NUM_SEQ_TURMA                     -- PI_NUM_SEQ_TURMA
+                       , NULL                                   -- PI_COD_TURMA_EXTENSAO
+                       , R_AP.IND_TIPO_CONTRATO                 -- PI_IND_TIPO_CONTRATO
+                       , P_COD_INSTITUICAO                      -- PI_COD_INSTITUICAO
+                       , 'N'                                    -- PI_COMMIT
+                       , P_IND_ERRO                             -- PO_IND_ERRO
+                       , P_MSG_RETORNO                          -- PO_MSG_RETORNO
+                       , NULL                                   -- PI_COD_TIPO_ATUACAO
+                       , V_QTDE_HORA_MOVIMENTO                  -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                       , R_AP.IND_ENSINO_DISTANCIA              -- PI_IND_ENSINO_DISTANCIA
+                       , V_QTDE_DIAS_TRAB                       -- PI_QTD_DIAS_TRABALHADOS
+                       , R_AP.QTD_HORAS_TEORICO);               -- PI_QTD_HORAS_TEORICO
+          --
+          IF P_IND_ERRO <> '0'
+          THEN
+            RAISE ERR_PREVISTO;
+          END IF;
+          --
+          BEGIN
+            --
+            V_POSICAO := 80;
+            --
+-- RETIRAR TURMA TELEPRESENCIAL
+            UPDATE SIA.ALOCACAO_PROFESSOR AP
+               SET AP.DT_GERACAO_PAGAMENTO = SYSDATE
+             WHERE AP.COD_PROFESSOR = R_AP.COD_PROFESSOR
+               AND AP.NUM_SEQ_ALOCACAO IN (R_AP.NUM_SEQ_ALOCACAO);
+/*            IF R_AP.IND_TELEPRESENCIAL = 'S'
+            THEN
+              UPDATE SIA.ALOCACAO_PROFESSOR AP
+                 SET AP.DT_GERACAO_PAGAMENTO = SYSDATE
+               WHERE AP.COD_PROFESSOR = R_AP.COD_PROFESSOR
+                 AND AP.NUM_SEQ_ALOCACAO IN (SELECT AP1.NUM_SEQ_ALOCACAO
+                                               FROM SIA.ALOCACAO_PROFESSOR AP1
+                                                   ,SIA.HORARIO_TURMA      HT
+                                              WHERE AP1.NUM_SEQ_HORARIO_TURMA = HT.NUM_SEQ_HORARIO_TURMA
+                                                AND AP1.COD_PROFESSOR = R_AP.COD_PROFESSOR
+                                                AND HT.NUM_SEQ_TURMA = R_AP.NUM_SEQ_TURMA
+                                                AND NVL(AP1.IND_SUBSTITUICAO_PROF, 'N') = 'N'
+                                                AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(AP1.DT_INICIO_ALOCACAO, 'MM') AND TRUNC(AP1.DT_FIM_ALOCACAO, 'MM'));
+            ELSE
+              UPDATE SIA.ALOCACAO_PROFESSOR AP
+                 SET AP.DT_GERACAO_PAGAMENTO = SYSDATE
+               WHERE AP.COD_PROFESSOR = R_AP.COD_PROFESSOR
+                 AND AP.NUM_SEQ_ALOCACAO IN (R_AP.NUM_SEQ_ALOCACAO);
+            END IF;
+*/            --
+          EXCEPTION
+            WHEN OTHERS THEN
+              P_MSG_RETORNO := 'ERRO AO ATUALIZAR INDICAÇÃO DE PAGAMENTO NA ALOCAÇÃO.';
+              V_ERRO_ORACLE := SQLERRM;
+              RAISE ERR_NAO_PREVISTO;
+          END;
+          --
+          V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+          --
+          IF MOD(V_QTD_REG_GRAVADOS, 1000) = 0 AND
+             P_COMMIT = 'S'
+          THEN
+            COMMIT;
+          END IF;
+          --
+          FETCH C_AP
+            INTO R_AP;
+          --
+        END LOOP;
+        --
+        P_MSG_RETORNO := 'QTDE DE REGISTROS ENVIADOS AO RH: ' || V_CONT_DESTINO_RH || CHR(13) || 'QTDE DE REGISTROS ENVIADOS AO FIN: ' || V_CONT_DESTINO_FIN || CHR(13) || 'QTDE DE REGISTROS NÃO PERTENCENTES AOS TIPOS DE CURSO GRADUACAO E POLITECNICO: ' || V_QTDE_OUTROS_TP_CURSOS;
+        --
+        --          DBMS_OUTPUT.PUT_LINE(P_MSG_RETORNO);
+        --
+        BEGIN
+          --
+          -- INCLUI O SISTÉTICO DO PROCESSO
+          --
+          BEGIN
+            V_COD_INSTITUICAO_FILTRO := TO_NUMBER(P_COD_INSTITUICAO);
+          EXCEPTION
+            WHEN OTHERS THEN
+              V_COD_INSTITUICAO_FILTRO := NULL;
+          END;
+          --
+          V_POSICAO := 200;
+          --
+          INSERT INTO SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+            (DT_MES_ANO_COMPETENCIA
+            ,NOM_PROCESSO
+            ,IND_TIPO_PROCESSO
+             --                      , COD_PROFESSOR
+            ,NUM_SEQ_DADOS_PROFESSOR
+            ,COD_CAMPUS
+            ,COD_TIPO_CURSO
+            ,QTD_GRAVADOS_IP
+            ,DT_INICIO_GERACAO
+            ,DT_FIM_GERACAO
+            ,IND_RETORNO
+            ,TXT_MSG_PROCESSO
+            ,TOTAL_REGS_RUBRICA_1
+            ,TOTAL_REGS_RUBRICA_2
+            ,TOTAL_HORAS_RUBRICA_1
+            ,TOTAL_HORAS_RUBRICA_2
+            ,QTD_REGS_DESTINO_1
+            ,QTD_REGS_DESTINO_2
+            ,CICLO
+            ,IND_TIPO_CONTRATO
+            ,COD_USUARIO_LOG
+            ,COD_INSTITUICAO)
+          VALUES
+            (P_DT_COMPETENCIA
+            ,'PRO_APURACAO_TURMA_ONLINE'
+            ,P_IND_TIPO_PROCESSO
+             --                      , P_COD_PROFESSOR
+            ,P_NUM_SEQ_DADOS_PROFESSOR
+            ,P_COD_CAMPUS
+            ,P_COD_TIPO_CURSO
+            ,V_CONT_GRAVADOS_IP
+            ,SYSDATE
+            ,SYSDATE
+            ,P_IND_ERRO
+            ,P_MSG_RETORNO
+            ,NULL --V_CONT_RUBRICA_CARGA_HR,
+            ,NULL --V_CONT_RUBRICA_AD_NOT,
+            ,NULL --V_QTD_CARGA_MENSAL_HR,
+            ,NULL --V_QTD_CARGA_MENSAL_AD_NOT,
+            ,V_CONT_DESTINO_RH
+            ,V_CONT_DESTINO_FIN
+            ,V_PROXIMO_CICLO
+            ,P_IND_TIPO_CONTRATO
+            ,P_COD_USUARIO
+            ,V_COD_INSTITUICAO_FILTRO);
+        EXCEPTION
+          WHEN OTHERS THEN
+            V_ERRO_ORACLE := SQLERRM;
+            P_MSG_RETORNO := 'HOUVE UMA FALHA AO INCLUIR NA TABELA "CONTROLE_PAGAMENTO_PROFESSOR".';
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        --
+        --**************************************************************************
+        -- ATUALIZA ALOCAÇÃO DE PROFESSOR PARA INDICAÇÃO DE GERAÇÃO DE PAGAMENTO ***
+        --**************************************************************************
+        /*          BEGIN
+                    --
+                    V_POSICAO := 210;
+                    --
+
+                    UPDATE SIA.ALOCACAO_PROFESSOR AP
+                    SET AP.DT_GERACAO_PAGAMENTO = SYSDATE
+                    WHERE EXISTS ( SELECT *
+                                   FROM   SIA.A_INTERFACE_PAGAMENTO IP
+                                   WHERE  TRUNC(IP.DT_MES_ANO_COMPETENCIA,'MM') = TRUNC(P_DT_COMPETENCIA,'MM')
+        --                             AND    TRUNC(IP.DT_MES_ANO_COMPETENCIA,'YYYY') = TRUNC(P_DT_COMPETENCIA,'YYYY')
+                                   AND    IP.NUM_SEQ_TURMA = AP.NUM_SEQ_TURMA
+                                   AND    IP.COD_PROFESSOR    = AP.COD_PROFESSOR
+                                   AND    IP.NOM_PROCESSO = 'PRO_APURACAO_TURMA_ONLINE'
+                                 );
+
+                  --
+                  EXCEPTION
+                      WHEN OTHERS THEN
+                          P_MSG_RETORNO := 'ERRO AO ATUALIZAR INDICAÇÃO DE PAGAMENTO NA ALOCAÇÃO.';
+                          V_ERRO_ORACLE := SQLERRM;
+                          RAISE ERR_NAO_PREVISTO;
+                  END;*/
+        --
+        V_POSICAO := 300;
+        --
+        IF P_COMMIT = 'S'
+        THEN
+          COMMIT;
+        END IF;
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --
+      EXCEPTION
+        --
+        WHEN ERR_ADVERTENCIA THEN
+          P_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          P_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          P_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          P_MSG_RETORNO := SQLERRM;
+          V_ERRO_ORACLE := SQLERRM;
+          P_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+          --
+      END;
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF P_COMMIT = 'S'
+        THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF P_IND_ERRO = '2'
+        THEN
+          SEG.SEG_LOG_EXECUCAO('PRO_APURACAO_TURMA_ONLINE, IE: ' || R_AP.COD_INSTITUICAO, V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, P_MSG_RETORNO);
+        END IF;
+        --
+    END;
+    --
+    IF C_AP%ISOPEN
+    THEN
+      CLOSE C_AP;
+    END IF;
+    --
+  END PRO_APURACAO_TURMA_ONLINE;
+  --
+  --
+  -- CRIA UMA TABELA COM TODOS OS DIAS DO MÊS DA COMPETÊNCIA
+  PROCEDURE PRO_RETROATIVO_CALENDARIO(P_DT_COMPETENCIA IN DATE) IS
+    --
+    V_DT_COMPETENCIA   DATE;
+    --
+  BEGIN
+    --
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE SIA.A_CALENDARIO';
+    --
+    V_DT_COMPETENCIA := ADD_MONTHS(TRUNC(P_DT_COMPETENCIA,'MM'),-2);
+    --
+    WHILE V_DT_COMPETENCIA <= LAST_DAY(ADD_MONTHS(P_DT_COMPETENCIA,-1))
+    LOOP
+      --
+      IF TO_CHAR(V_DT_COMPETENCIA,'DD') != '31' THEN
+          --
+          INSERT INTO SIA.A_CALENDARIO
+            ( COD_DIA_SEMANA
+            , DT_DIA_MES )
+          VALUES
+            ( TO_CHAR(V_DT_COMPETENCIA,'D')
+            , V_DT_COMPETENCIA );
+          --
+      END IF;
+      --
+      V_DT_COMPETENCIA := V_DT_COMPETENCIA + 1;
+      --
+    END LOOP;
+    --
+    COMMIT;
+  EXCEPTION
+  WHEN OTHERS THEN
+      NULL;
+  END;
+  --
+  PROCEDURE PRO_RETROATIVO_ALOCACAO(P_DT_COMPETENCIA          IN DATE
+                                   ,P_NUM_SEQ_DADOS_PROFESSOR IN VARCHAR2 DEFAULT NULL
+                                   ,P_COD_TIPO_CURSO          IN NUMBER DEFAULT NULL
+                                   ,P_COD_CAMPUS              IN NUMBER DEFAULT NULL
+                                   ,P_IND_TIPO_PROCESSO       IN VARCHAR2 DEFAULT NULL
+                                   ,P_IND_TIPO_CONTRATO       IN VARCHAR2 DEFAULT NULL
+                                   ,P_COD_USUARIO             IN VARCHAR2
+                                   ,P_COMMIT                  IN VARCHAR2
+                                   ,P_IND_ERRO                OUT VARCHAR2
+                                   ,P_MSG_RETORNO             OUT VARCHAR2
+                                   ,P_COD_INSTITUICAO         IN VARCHAR2) IS
+    --
+    -- P_IND_TIPO_PROCESSO  (G) GERAL
+    --                      (P) PARCIAL: CHAMADA ISOLADAMENTE
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+
+    V_NUM_SEQ_ERRO         NUMBER(10);
+    --
+
+    V_ERRO_ORACLE VARCHAR2(500);
+    V_TXT_PARAMETROS          VARCHAR2(500);
+    V_POSICAO                 NUMBER(03);
+    V_CONT_HT                 INTEGER;
+    V_CONT_HTV                INTEGER;
+    V_CONT_HTE                INTEGER;
+    V_CONT_DT                 INTEGER;
+    V_CURSO_EXTENSAO          VARCHAR2(1);
+    V_DESTINO                 INTEGER;
+    V_CONT_DESTINO_RH         INTEGER;
+    V_CONT_DESTINO_FIN        INTEGER;
+    V_CONT_GRAVADOS_IP        INTEGER;
+    V_START                   DATE;
+    V_CONT_RUBRICA_CARGA_HR   INTEGER;
+    V_CONT_RUBRICA_AD_NOT     INTEGER;
+    V_QTD_CARGA_MENSAL        NUMBER(6,2);
+    V_QTD_CARGA_MENSAL_AD_NOT NUMBER(6,2);
+    V_QTD_CARGA_MENSAL_HR     NUMBER(6,2);
+
+    V_QTD_REG_LIDOS             PLS_INTEGER;
+    V_QTD_REG_GRAVADOS          PLS_INTEGER;
+    V_QTD_REG_DESPREZADOS       PLS_INTEGER;
+    V_QTDE_OUTROS_TP_CURSOS     PLS_INTEGER;
+    V_PROXIMO_CICLO             PLS_INTEGER;
+    V_ACHOU                     PLS_INTEGER;
+
+    V_COD_CURSO              NUMBER(10);
+    V_COD_CURSO_EXTENSAO     NUMBER(10);
+    V_QTDE_HORAS_MOVIMENTO   NUMBER(6, 2);
+    V_NUM_SEQ_TURMA          NUMBER(10);
+    V_COD_TURMA_EXTENSAO     NUMBER(10);
+    V_COD_TIPO_RUBRICA       NUMBER(2);
+    V_QTD_DIAS_DIF           PLS_INTEGER;
+    V_DURACAO_TEMPO_AD_NOT   PLS_INTEGER;
+    V_COD_INSTITUICAO_FILTRO NUMBER(6, 0);
+
+    V_DT_ULTIMA_GERACAO      DATE;
+    V_DT_COMPETENCIA         DATE;
+
+
+    PROCEDURE GRAVA_LOG(P_LINHA_LOG_IN   IN VARCHAR2
+                       ,P_COD_RETORNO_IN IN NUMBER) IS
+    BEGIN
+      --
+      ROLLBACK;
+      --
+      INSERT INTO SIA.LOG_INTERFACE_ARQUIVO
+        (NUM_SEQ_LOG
+        ,NOM_PROCESSO
+        ,NOM_ARQUIVO
+        ,COD_RETORNO
+        ,MSG_RETORNO
+        ,DT_INICIO_EXECUCAO
+        ,DT_FIM_EXECUCAO
+        ,NOM_DIRETORIO_ORIGEM
+        ,NOM_DIRETORIO_DESTINO
+        ,QTD_LIDOS
+        ,QTD_GRAVADOS
+        ,QTD_DESPREZADOS)
+      VALUES
+        (SIA.S_LOG_INTERFACE_ARQUIVO.NEXTVAL
+        ,'PRO_RETROATIVO_ALOCACAO' --'PRO_2_APURACAO_ALOCACAO'
+        ,'A_INTERFACE_PAGAMENTO'
+        ,P_COD_RETORNO_IN
+        ,P_LINHA_LOG_IN
+        ,V_START
+        ,SYSDATE
+        ,NULL
+        ,NULL
+        ,V_QTD_REG_LIDOS
+        ,V_QTD_REG_GRAVADOS
+        ,V_QTD_REG_DESPREZADOS);
+      --
+      COMMIT;
+      --
+    EXCEPTION
+    WHEN OTHERS THEN
+        --
+        P_MSG_RETORNO := 'FALHA AO INCLUIR EM LOG_INTERFACE_ARQUIVO.';
+        V_ERRO_ORACLE := SQLERRM;
+        --
+        SEG.SEG_LOG_EXECUCAO('PRO_RETROATIVO_ALOCACAO.GRAVA_LOG'
+                           , V_POSICAO
+                           , V_ERRO_ORACLE
+                           , V_TXT_PARAMETROS
+                           , P_MSG_RETORNO);
+        --
+        RAISE ERR_NAO_PREVISTO;
+        --
+    END GRAVA_LOG;
+    --
+    --
+    --
+  BEGIN
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        V_TXT_PARAMETROS := ' P_DT_COMPETENCIA : ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || CHR(13) ||
+                            ' P_NUM_SEQ_DADOS_PROFESSOR : ' || P_NUM_SEQ_DADOS_PROFESSOR || CHR(13) ||
+                            ' P_COD_TIPO_CURSO : ' || P_COD_TIPO_CURSO || CHR(13) ||
+                            ' P_COD_CAMPUS     : ' || P_COD_CAMPUS || CHR(13) ||
+                            ' P_IND_TIPO_PROCESSO: ' || P_IND_TIPO_PROCESSO || CHR(13) ||
+                            ' P_IND_TIPO_CONTRATO: ' || P_IND_TIPO_CONTRATO || CHR(13) ||
+                            ' P_COD_INSTITUICAO  : ' || P_COD_INSTITUICAO;
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        V_START       := SYSDATE;
+        V_QTD_REG_LIDOS           := 0;
+        V_QTD_REG_GRAVADOS        := 0;
+        V_QTDE_OUTROS_TP_CURSOS   := 0;
+        V_CURSO_EXTENSAO          := 'N';
+        V_CONT_HT                 := 0;
+        V_CONT_HTV                := 0;
+        V_CONT_DT                 := 0;
+        V_CONT_HTE                := 0;
+        V_DESTINO                 := 1;
+        V_CONT_DESTINO_RH         := 0;
+        V_CONT_DESTINO_FIN        := 0;
+        V_CONT_GRAVADOS_IP        := 0;
+        V_CONT_RUBRICA_CARGA_HR   := 0;
+        V_CONT_RUBRICA_AD_NOT     := 0;
+        V_QTD_CARGA_MENSAL_HR     := 0;
+        V_QTD_CARGA_MENSAL_AD_NOT := 0;
+
+        --
+        -- 1. VALIDA PARÂMETROS OBRIGATÓRIOS
+        --
+        V_POSICAO := 10;
+        --
+        IF P_DT_COMPETENCIA IS NULL THEN
+          P_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        IF P_IND_TIPO_PROCESSO IS NULL THEN
+          P_MSG_RETORNO := 'O TIPO DE PROCESSO DEVE SER INFORMADO.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        -- ESTA VERIFICAÇÃO SE FAZ NECESSÁRIA PORQUE EXISTE UMA FK EM INTERFACE_PAGAMENTO
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_RETROATIVO_ALOCACAO';
+          --
+        EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'O PROCESSO "PRO_RETROATIVO_ALOCACAO" DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+
+        V_POSICAO := 11;
+        --
+        --
+        -- 1.1. CARREGA A TABELA TEMPORÁRIA COM OS DIAS DO MÊS DE COMPETÊNCIA
+        PRO_RETROATIVO_CALENDARIO(P_DT_COMPETENCIA);
+
+        --
+        -- BUSCA DIA DE GERAÇÃO DO MES ANTERIOR - PRO_APURACAO_ALOCACAO
+        BEGIN
+          --
+          SELECT MAX(TRUNC(CPP.DT_INICIO_GERACAO))
+            INTO V_DT_ULTIMA_GERACAO
+            FROM SIA.CONTROLE_PAGAMENTO_PROFESSOR CPP
+           WHERE CPP.NOM_PROCESSO    = 'PRO_APURACAO_ALOCACAO'
+             AND CPP.COD_INSTITUICAO = P_COD_INSTITUICAO;
+          --
+        EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODOS ANTERIORES, NO PROCESSO DE ALOCAÇÃO.';
+            RAISE ERR_ADVERTENCIA;
+        END;
+        --
+        IF V_DT_ULTIMA_GERACAO IS NULL THEN
+            P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODOS ANTERIORES, NO PROCESSO DE ALOCAÇÃO.';
+            RAISE ERR_ADVERTENCIA;
+        END IF;
+
+        --
+        BEGIN
+          V_POSICAO := 13;
+          --
+          -- 1.3. OBTEM O PRÓXIMO CICLO DENTRO DE UMA COMPETÊNCIA PERTENCENTE A RUBRICA.
+          SELECT NVL(MAX(CICLO),0) + 1
+            INTO V_PROXIMO_CICLO
+            FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+           WHERE DT_MES_ANO_COMPETENCIA = P_DT_COMPETENCIA
+             AND COD_INSTITUICAO        = P_COD_INSTITUICAO
+             AND NOM_PROCESSO = 'PRO_RETROATIVO_ALOCACAO';
+          --
+        EXCEPTION
+        WHEN OTHERS THEN
+            P_MSG_RETORNO := 'FALHA AO RECUPERAR O PRÓXIMO CICLO DE INTERFACE PAGAMENTO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        V_POSICAO := 14;
+        --
+        -- 1.4. MONTA CURSOR COM OS PROFESSORES
+        FOR C_PROFESSOR IN ( SELECT DISTINCT P.NUM_SEQ_DADOS_PROFESSOR
+                               FROM SIA.PROFESSOR         P
+                                  , SIA.PROFESSOR_REGIAO  PR
+                                  , SIA.CAMPUS            CA
+                              WHERE P.COD_PROFESSOR    = PR.COD_PROFESSOR
+                                AND PR.COD_REGIAO      = CA.COD_REGIAO
+                                AND CA.COD_INSTITUICAO = P_COD_INSTITUICAO
+                                AND P.NUM_SEQ_DADOS_PROFESSOR = NVL(P_NUM_SEQ_DADOS_PROFESSOR,P.NUM_SEQ_DADOS_PROFESSOR)
+                                AND P.IND_TIPO_CONTRATO = NVL(P_IND_TIPO_CONTRATO,P.IND_TIPO_CONTRATO)
+                                AND EXISTS (SELECT 1
+                                              FROM SIA.ALOCACAO_PROFESSOR AP
+                                             WHERE AP.COD_PROFESSOR = P.COD_PROFESSOR
+                                               AND AP.DT_GERACAO_PAGAMENTO IS NULL
+                                               AND AP.DT_INCLUSAO > V_DT_ULTIMA_GERACAO)
+        )LOOP
+
+            --
+            -- CURSOR COM AS ALOCAÇÕES DO PROFESSOR DE MM-1
+            V_DT_COMPETENCIA := ADD_MONTHS(TRUNC(P_DT_COMPETENCIA,'MM'),-2);
+            --
+            WHILE V_DT_COMPETENCIA <= ADD_MONTHS(TRUNC(P_DT_COMPETENCIA,'MM'),-1)
+            LOOP
+                A_ALOCACAO.DELETE;
+                T_ALOCACAO.DELETE;
+                T_TURMA.DELETE;
+                FOR C_ALOCACAO IN (
+                -- SELECIONA APENAS AS TURMAS PRESENCIAIS - PROJETO SEMIPRESENCIAL
+                                   SELECT VAP.DIA_SEMANA
+                                        , VAP.TURNO_TEMPO
+                                        , VAP.TABELA
+                                        , VAP.COD_PROFESSOR
+                                        , VAP.NUM_SEQ_DADOS_PROFESSOR
+                                        , VAP.TIPO_CURSO COD_TIPO_CURSO
+                                        , VAP.DT_INI
+                                        , VAP.DT_FIM
+                                        , VAP.HORA_INI
+                                        , VAP.HORA_FIM
+                                        , VAP.IND_SUBSTITUICAO_PROF
+                                        , VAP.COD_CAMPUS
+                                        , VAP.COD_TURNO
+                                        , VAP.COD_CURSO
+                                        , VAP.DT_SUBSTITUICAO_PROF
+                                        , VAP.NUM_MATRICULA
+                                        , VAP.NUM_SEQ_PERIODO_ACADEMICO
+                                        , VAP.PK_TURMA
+                                        , VAP.NUM_SEQ_ALOCACAO
+                                        , VAP.IND_TIPO_CONTRATO
+                                        , VAP.PERCENTUAL_APRIMORAMENTO
+                                        , VAP.COD_BANCO
+                                        , VAP.COD_AGENCIA
+                                        , VAP.COD_AGENCIA_DV
+                                        , VAP.CONTA_CORRENTE
+                                        , VAP.CONTA_CORRENTE_DV
+                                        , VAP.COD_CATEGORIA_PROFESSOR
+                                        , VAP.CPF_PROFESSOR
+                                        , VAP.IND_ENSINO_DISTANCIA
+                                        , VAP.NUM_SEQ_COMPOSICAO
+                                        , VAP.HH_INICIO_AULA
+                                        , VAP.HH_FIM_AULA
+                                        , CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+                                        , VAP.COD_INSTITUICAO
+                                        , VAP.IND_TELEPRESENCIAL
+                                        , VAP.ID_TURNO
+                                        , VAP.DT_INICIO_ALOCACAO
+                                        , VAP.DT_FIM_ALOCACAO
+                                        , VAP.DT_GERACAO_PAGAMENTO
+                                        , CASE WHEN VAP.DT_INCLUSAO > V_DT_ULTIMA_GERACAO AND
+                                                    VAP.DT_GERACAO_PAGAMENTO IS NULL
+                                               THEN 2 ELSE 1 END IND_PAGAMENTO
+                                        , VAP.IND_MODALIDADE
+                                  FROM SIA.V_ALOCACAO_PROFESSOR VAP
+                                      ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+                                 WHERE V_DT_COMPETENCIA BETWEEN TRUNC(VAP.DT_INICIO_ALOCACAO,'MM')
+                                                            AND TRUNC(VAP.DT_FIM_ALOCACAO,'MM')
+                                   AND NVL(VAP.IND_SUBSTITUICAO_PROF, 'N') = 'N'
+                                   AND NVL(VAP.QTD_ALUNOS_MATRICULADOS, 0) > 0
+                                   --  /*10-09-2010*/
+                                   AND VAP.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+                                   AND VAP.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+                                   AND VAP.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+                                   AND VAP.COD_CAMPUS               = CT.COD_CAMPUS
+                                   AND VAP.TIPO_CURSO               = CT.COD_TIPO_CURSO
+                                   AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                                                   AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+                                   --  /*10-09-2010*/
+                                   AND VAP.NUM_SEQ_DADOS_PROFESSOR         = C_PROFESSOR.NUM_SEQ_DADOS_PROFESSOR
+                                   AND (P_COD_TIPO_CURSO IS NULL OR VAP.TIPO_CURSO = P_COD_TIPO_CURSO)
+                                   AND (P_COD_CAMPUS IS NULL OR VAP.COD_CAMPUS = P_COD_CAMPUS)
+                                   AND VAP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                                   AND VAP.IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+                                   --
+                                   AND NVL(VAP.IND_PAGAMENTO_ALOCACAO,'S') = 'S' -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+                                   --
+                                   AND VAP.IND_MODALIDADE = 'P' -- SELECIONA APENAS TURMAS PRESENCIAIS - PROJETO SEMIPRESENCIAL
+                                   --
+                                   AND (P_IND_TIPO_CONTRATO IS NULL OR VAP.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+                                   AND VAP.TABELA <> 'HTV'     -- MENOS TURMA VIRTUAL
+                                   --
+                                   -- BLOQUEIO DE PERMISSÃO DE PAGAMENTO PARA UMA DETERMINADA COMPETÊNCIA (MALUQUINHA)
+                                   AND NOT EXISTS (SELECT 1
+                                                     FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+                                                    WHERE VP.COD_TIPO_CURSO = VAP.TIPO_CURSO
+                                                      AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                                                      AND TRUNC(P_DT_COMPETENCIA,'MM') BETWEEN TRUNC(VP.DT_INI_VIGENCIA,'MM')
+                                                                                           AND TRUNC(VP.DT_FIM_VIGENCIA,'MM')
+                                                      AND ((VP.COD_CURSO IS NULL AND VAP.COD_CURSO = VAP.COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VAP.COD_CURSO = VP.COD_CURSO)))
+                                   --
+                                   -- PAGAMENTO BLOQUEADO PARA O PROFESSOR
+                                   AND NOT EXISTS (SELECT 1
+                                                     FROM SIA.BLOQUEIO_PAGAMENTO_RETROATIVO BLOQ
+                                                    WHERE BLOQ.COD_PROFESSOR = VAP.COD_PROFESSOR
+                                                      AND BLOQ.NUM_SEQ_ALOCACAO IS NULL
+                                                      AND BLOQ.DT_MES_ANO_COMPETENCIA = TRUNC(P_DT_COMPETENCIA,'MM'))
+
+                                   --
+                                   -- PAGAMENTO BLOQUEADO PARA O ALOCAÇÃO DO PROFESSOR
+                                   AND NOT EXISTS (SELECT 1
+                                                     FROM SIA.BLOQUEIO_PAGAMENTO_RETROATIVO BLOQ
+                                                    WHERE BLOQ.NUM_SEQ_ALOCACAO  = VAP.NUM_SEQ_ALOCACAO
+                                                      AND BLOQ.COD_PROFESSOR     = VAP.COD_PROFESSOR
+                                                      AND BLOQ.DT_MES_ANO_COMPETENCIA = TRUNC(P_DT_COMPETENCIA,'MM'))
+                                   --
+                                   -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+                                   AND VAP.IND_TIPO_SALARIO = 'H'
+                                   --
+                                   -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+                                   AND NOT EXISTS (SELECT 1
+                                                     FROM SIA.ADMINISTRATIVO_RH ARH
+                                                    WHERE ARH.NUM_MATRICULA = VAP.NUM_MATRICULA)
+-- SRD 1705-Importação CH Docente SIA x ADP (FAL e FATERN) - NÃO PAGAR RETROATIVO
+AND VAP.COD_INSTITUICAO NOT IN (1022,1809,1464) 
+--
+                --
+                UNION
+                -- SELECIONA APENAS AS TURMAS SEMIPRESENCIAIS - PROJETO SEMIPRESENCIAL
+                                   SELECT VAP.DIA_SEMANA
+                                        , VAP.TURNO_TEMPO
+                                        , VAP.TABELA
+                                        , VAP.COD_PROFESSOR
+                                        , VAP.NUM_SEQ_DADOS_PROFESSOR
+                                        , VAP.TIPO_CURSO COD_TIPO_CURSO
+                                        , VAP.DT_INI
+                                        , VAP.DT_FIM
+                                        , VAP.HORA_INI
+                                        , VAP.HORA_FIM
+                                        , VAP.IND_SUBSTITUICAO_PROF
+                                        , VAP.COD_CAMPUS_PAI COD_CAMPUS -- PROJETO SEMIPRESENCIAL
+                                        , VAP.COD_TURNO
+                                        , VAP.COD_CURSO
+                                        , VAP.DT_SUBSTITUICAO_PROF
+                                        , VAP.NUM_MATRICULA
+                                        , VAP.NUM_SEQ_PERIODO_ACADEMICO
+                                        , VAP.PK_TURMA
+                                        , VAP.NUM_SEQ_ALOCACAO
+                                        , VAP.IND_TIPO_CONTRATO
+                                        , VAP.PERCENTUAL_APRIMORAMENTO
+                                        , VAP.COD_BANCO
+                                        , VAP.COD_AGENCIA
+                                        , VAP.COD_AGENCIA_DV
+                                        , VAP.CONTA_CORRENTE
+                                        , VAP.CONTA_CORRENTE_DV
+                                        , VAP.COD_CATEGORIA_PROFESSOR
+                                        , VAP.CPF_PROFESSOR
+                                        , VAP.IND_ENSINO_DISTANCIA
+                                        , VAP.NUM_SEQ_COMPOSICAO
+                                        , VAP.HH_INICIO_AULA
+                                        , VAP.HH_FIM_AULA
+                                        , CT.VAL_COMPOSICAO AS VAL_HORA_AULA
+                                        , VAP.COD_INSTITUICAO_PAI COD_INSTITUICAO -- PROJETO SEMIPRESENCIAL
+                                        , VAP.IND_TELEPRESENCIAL
+                                        , VAP.ID_TURNO
+                                        , VAP.DT_INICIO_ALOCACAO
+                                        , VAP.DT_FIM_ALOCACAO
+                                        , VAP.DT_GERACAO_PAGAMENTO
+                                        , CASE WHEN VAP.DT_INCLUSAO > V_DT_ULTIMA_GERACAO AND
+                                                    VAP.DT_GERACAO_PAGAMENTO IS NULL
+                                               THEN 2 ELSE 1 END IND_PAGAMENTO
+                                        , VAP.IND_MODALIDADE
+                                  FROM SIA.V_ALOCACAO_PROFESSOR VAP
+                                      ,SIA.COMPOSICAO_TEMPOS  CT /*10-09-2010*/
+                                 WHERE V_DT_COMPETENCIA BETWEEN TRUNC(VAP.DT_INICIO_ALOCACAO,'MM')
+                                                            AND TRUNC(VAP.DT_FIM_ALOCACAO,'MM')
+                                   AND NVL(VAP.IND_SUBSTITUICAO_PROF, 'N') = 'N'
+                                   AND NVL(VAP.QTD_ALUNOS_MATRICULADOS, 0) > 0
+                                   --  /*10-09-2010*/
+                                   AND VAP.NUM_SEQ_DURACAO          = CT.NUM_SEQ_DURACAO
+                                   AND VAP.NUM_SEQ_TEMPO            = CT.NUM_SEQ_TEMPO
+                                   AND VAP.NUM_SEQ_COMPOSICAO       = CT.NUM_SEQ_COMPOSICAO
+                                   AND VAP.COD_CAMPUS               = CT.COD_CAMPUS
+                                   AND VAP.TIPO_CURSO               = CT.COD_TIPO_CURSO
+                                   AND TRUNC(SYSDATE) BETWEEN CT.DT_INI_VIGENCIA
+                                                   AND NVL(CT.DT_FIM_VIGENCIA,SYSDATE)
+                                   --  /*10-09-2010*/
+                                   AND VAP.NUM_SEQ_DADOS_PROFESSOR         = C_PROFESSOR.NUM_SEQ_DADOS_PROFESSOR
+                                   AND (P_COD_TIPO_CURSO IS NULL OR VAP.TIPO_CURSO = P_COD_TIPO_CURSO)
+                                   AND (P_COD_CAMPUS IS NULL OR VAP.COD_CAMPUS_PAI = P_COD_CAMPUS) -- PROJETO SEMIPRESENCIAL
+                                   AND VAP.COD_INSTITUICAO_PAI = P_COD_INSTITUICAO -- PROJETO SEMIPRESENCIAL
+                                   AND VAP.IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+                                   --
+                                   AND NVL(VAP.IND_PAGAMENTO_ALOCACAO,'S') = 'S' -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+                                   --
+                                   AND VAP.IND_MODALIDADE = 'S' -- SELECIONA APENAS TURMAS SEMIPRESENCIAIS - PROJETO SEMIPRESENCIAL
+                                   --
+                                   AND (P_IND_TIPO_CONTRATO IS NULL OR VAP.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+                                   AND VAP.TABELA <> 'HTV'     -- MENOS TURMA VIRTUAL
+                                   --
+                                   -- BLOQUEIO DE PERMISSÃO DE PAGAMENTO PARA UMA DETERMINADA COMPETÊNCIA (MALUQUINHA)
+                                   AND NOT EXISTS (SELECT 1
+                                                     FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+                                                    WHERE VP.COD_TIPO_CURSO = VAP.TIPO_CURSO
+                                                      AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                                                      AND TRUNC(P_DT_COMPETENCIA,'MM') BETWEEN TRUNC(VP.DT_INI_VIGENCIA,'MM')
+                                                                                           AND TRUNC(VP.DT_FIM_VIGENCIA,'MM')
+                                                      AND ((VP.COD_CURSO IS NULL AND VAP.COD_CURSO = VAP.COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VAP.COD_CURSO = VP.COD_CURSO)))
+                                   --
+                                   -- PAGAMENTO BLOQUEADO PARA O PROFESSOR
+                                   AND NOT EXISTS (SELECT 1
+                                                     FROM SIA.BLOQUEIO_PAGAMENTO_RETROATIVO BLOQ
+                                                    WHERE BLOQ.COD_PROFESSOR = VAP.COD_PROFESSOR
+                                                      AND BLOQ.NUM_SEQ_ALOCACAO IS NULL
+                                                      AND BLOQ.DT_MES_ANO_COMPETENCIA = TRUNC(P_DT_COMPETENCIA,'MM'))
+
+                                   --
+                                   -- PAGAMENTO BLOQUEADO PARA O ALOCAÇÃO DO PROFESSOR
+                                   AND NOT EXISTS (SELECT 1
+                                                     FROM SIA.BLOQUEIO_PAGAMENTO_RETROATIVO BLOQ
+                                                    WHERE BLOQ.NUM_SEQ_ALOCACAO  = VAP.NUM_SEQ_ALOCACAO
+                                                      AND BLOQ.COD_PROFESSOR     = VAP.COD_PROFESSOR
+                                                      AND BLOQ.DT_MES_ANO_COMPETENCIA = TRUNC(P_DT_COMPETENCIA,'MM'))
+                                   --
+                                   -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+                                   AND VAP.IND_TIPO_SALARIO = 'H'
+                                   --
+                                   -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+                                   AND NOT EXISTS (SELECT 1
+                                                     FROM SIA.ADMINISTRATIVO_RH ARH
+                                                    WHERE ARH.NUM_MATRICULA = VAP.NUM_MATRICULA)
+-- SRD 1705-Importação CH Docente SIA x ADP (FAL e FATERN) - NÃO PAGAR RETROATIVO
+AND VAP.COD_INSTITUICAO NOT IN (1022,1809,1464) 
+--
+                     --
+                                ORDER BY IND_PAGAMENTO, IND_MODALIDADE
+                )LOOP
+                     --
+                     -- CURSOR COM OS DIAS DO MES COM ALOCACAO
+                     FOR C_CALENDARIO IN ( SELECT CA.DT_DIA_MES
+                                             FROM SIA.A_CALENDARIO  CA
+                                            WHERE TRUNC(CA.DT_DIA_MES,'MM') = V_DT_COMPETENCIA
+                                              AND CA.DT_DIA_MES BETWEEN C_ALOCACAO.DT_INICIO_ALOCACAO
+                                                                    AND C_ALOCACAO.DT_FIM_ALOCACAO
+                     )LOOP
+                          --
+                          -- CASO EM QUE O PROFESSOR NÃO POSSUI CONFLITO
+                          IF NOT VALID_ALOCACAO(C_ALOCACAO.IND_TELEPRESENCIAL
+                                              , C_ALOCACAO.DIA_SEMANA
+                                              , C_CALENDARIO.DT_DIA_MES
+                                              , C_ALOCACAO.HH_INICIO_AULA
+                                              , C_ALOCACAO.HH_FIM_AULA) THEN
+
+                              --
+                              -- CARREGA O HORARIO COMO PAGO
+                              SET_PAGAMENTO(C_ALOCACAO.IND_TELEPRESENCIAL
+                                          , C_ALOCACAO.NUM_SEQ_ALOCACAO
+                                          , C_ALOCACAO.DIA_SEMANA
+                                          , C_CALENDARIO.DT_DIA_MES
+                                          , C_ALOCACAO.HH_INICIO_AULA
+                                          , C_ALOCACAO.HH_FIM_AULA
+                                          , C_ALOCACAO.VAL_HORA_AULA
+                                          , C_ALOCACAO.TABELA
+                                          , C_ALOCACAO.COD_PROFESSOR
+                                          , C_ALOCACAO.NUM_MATRICULA
+                                          , C_ALOCACAO.DT_INICIO_ALOCACAO
+                                          , C_ALOCACAO.DT_FIM_ALOCACAO
+                                          , C_ALOCACAO.PERCENTUAL_APRIMORAMENTO
+                                          , C_ALOCACAO.COD_CAMPUS
+                                          , C_ALOCACAO.COD_TIPO_CURSO
+                                          , C_ALOCACAO.COD_CURSO
+                                          , C_ALOCACAO.COD_TURNO
+                                          , C_ALOCACAO.ID_TURNO
+                                          , C_ALOCACAO.COD_BANCO
+                                          , C_ALOCACAO.COD_AGENCIA
+                                          , C_ALOCACAO.COD_AGENCIA_DV
+                                          , C_ALOCACAO.CONTA_CORRENTE
+                                          , C_ALOCACAO.CONTA_CORRENTE_DV
+                                          , C_ALOCACAO.COD_CATEGORIA_PROFESSOR
+                                          , C_ALOCACAO.PK_TURMA
+                                          , C_ALOCACAO.IND_TIPO_CONTRATO
+                                          , C_ALOCACAO.IND_PAGAMENTO);
+                        END IF;
+                        --
+                     END LOOP; --C_CALENDARIO
+                     --
+                END LOOP; -- C_ALOCACAO
+
+                --
+                -- GRAVA_PAGAMENTO_PROFESSOR
+                FOR I IN 1..T_TURMA.COUNT
+                LOOP
+                   --
+                   V_NUM_SEQ_ERRO := T_TURMA(I).NUM_SEQ_ALOCACAO;
+                   --
+                   IF T_TURMA(I).IND_PAGAMENTO = 2 THEN
+                      --
+                      BEGIN
+                              --
+                              -- ATUALIZA CONTADORES
+                              --
+                              V_POSICAO := 20;
+                              --
+                              V_CURSO_EXTENSAO := 'N';
+                              --
+                              IF T_TURMA(I).TABELA = 'HT' THEN
+                                V_CONT_HT := V_CONT_HT + 1;
+                              ELSIF T_TURMA(I).TABELA = 'HTV' THEN
+                                V_CONT_HTV := V_CONT_HTV + 1;
+                              ELSIF T_TURMA(I).TABELA = 'DT' THEN
+                                V_CONT_DT := V_CONT_DT + 1;
+                              ELSIF T_TURMA(I).TABELA = 'HTE' THEN
+                                V_CONT_HTE       := V_CONT_HTE + 1;
+                                V_CURSO_EXTENSAO := 'S';
+                              ELSE
+                                P_MSG_RETORNO := 'NÃO EXISTE UMA TABELA ASSOCIADA A AULA: ' || T_TURMA(I).TABELA;
+                                RAISE ERR_PREVISTO;
+                              END IF;
+                              --
+                              V_POSICAO := 21;
+                              IF T_TURMA(I).IND_TIPO_CONTRATO IN ('F', 'S') THEN
+                                V_DESTINO         := 1;
+                                V_CONT_DESTINO_RH := V_CONT_DESTINO_RH + 1;
+                              ELSIF T_TURMA(I).IND_TIPO_CONTRATO = 'P' THEN
+                                V_DESTINO          := 2;
+                                V_CONT_DESTINO_FIN := V_CONT_DESTINO_FIN + 1;
+                              END IF;
+
+                              --
+                              V_POSICAO := 22;
+                              IF T_TURMA(I).IND_TELEPRESENCIAL = 'S' THEN
+                                V_POSICAO := 23;
+                                IF T_TURMA(I).ID_TURNO IN (1,2) THEN
+                                  V_COD_TIPO_RUBRICA := 43;
+                                ELSE
+                                  V_COD_TIPO_RUBRICA := 42;
+                                END IF;
+                              ELSE
+                                V_COD_TIPO_RUBRICA := 1; -- CARGA HORÁRIA
+                              END IF;
+
+                              V_CONT_RUBRICA_CARGA_HR := V_CONT_RUBRICA_CARGA_HR + 1;
+                              --
+                              -- 2. CALCULA QTD DE A PAGAR. INTEGRAL
+                              V_POSICAO := 23;
+                              IF T_TURMA(I).QTD_DIA_TRABALHADO >= 30 OR
+                                 (TO_CHAR(V_DT_COMPETENCIA,'MM') = '02' AND
+                                 TO_CHAR(LAST_DAY(V_DT_COMPETENCIA), 'DD') = T_TURMA(I).QTD_DIA_TRABALHADO)
+                              THEN
+                                --
+                                -- CALCULA QTD DE A PAGAR. PROPORCIONAL
+                                V_QTD_DIAS_DIF := 0;
+                                --
+                                -- SE O MÊS DA DATA INICIAL FOR FEVEREIRO E
+                                -- SE FOR DO MESMO ANO DE COMPETENCIA E
+                                -- SE A DATA FINAL EXTRAPOLAR O MES DE COMPETENCIA ENTÃO CALCULA A DIFERENÇA PARA 30 DIAS
+                                --
+                                IF TO_CHAR(T_TURMA(I).DT_INI_ALOCACAO, 'MM') = '02' AND
+                                   TO_CHAR(T_TURMA(I).DT_INI_ALOCACAO, 'YYYY') = TO_CHAR(V_DT_COMPETENCIA, 'YYYY') AND
+                                   T_TURMA(I).DT_FIM_ALOCACAO >= LAST_DAY(V_DT_COMPETENCIA)
+                                THEN
+                                  V_QTD_DIAS_DIF := 30 - TO_NUMBER(TO_CHAR(LAST_DAY(T_TURMA(I).DT_INI_ALOCACAO), 'DD'));
+                                END IF;
+                                --
+                                T_TURMA(I).QTD_DIA_TRABALHADO := T_TURMA(I).QTD_DIA_TRABALHADO + V_QTD_DIAS_DIF;
+                                --
+                                IF T_TURMA(I).QTD_DIA_TRABALHADO > 30 THEN
+                                  T_TURMA(I).QTD_DIA_TRABALHADO := 30;
+                                END IF;
+                                --
+                                V_POSICAO := 25;
+                                V_QTD_CARGA_MENSAL := 4.5 * T_TURMA(I).VAL_HORA_AULA;
+                                --
+                                -- 2.1. ATUALIZA A_INTERFACE_PAGAMENTO P/ CALCULA QTD DE A PAGAR. INTEGRAL
+                                --
+                                V_POSICAO := 31;
+                                SELECT DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).COD_CURSO)
+                                      ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).COD_CURSO, NULL)
+                                      ,DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).NUM_SEQ_TURMA)
+                                      ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).NUM_SEQ_TURMA, NULL)
+                                      ,DECODE(V_COD_TIPO_RUBRICA, 1, V_QTD_CARGA_MENSAL, 42, V_QTD_CARGA_MENSAL, 43, V_QTD_CARGA_MENSAL, V_QTD_CARGA_MENSAL_AD_NOT)
+                                  INTO V_COD_CURSO
+                                      ,V_COD_CURSO_EXTENSAO
+                                      ,V_NUM_SEQ_TURMA
+                                      ,V_COD_TURMA_EXTENSAO
+                                      ,V_QTDE_HORAS_MOVIMENTO
+                                  FROM DUAL;
+                                --
+                                GRAVA_ARQUIVO(V_COD_TIPO_RUBRICA                       -- PI_COD_TIPO_RUBRICA
+                                             , P_DT_COMPETENCIA                        -- PI_DT_COMPETENCIA           (V_DT_COMPETENCIA)
+                                             , V_PROXIMO_CICLO                         -- PI_PROXIMO_CICLO
+                                             , 'PRO_RETROATIVO_ALOCACAO'                 -- PI_NOM_PROCESSO
+                                             , '1'                                     -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                                             , V_DESTINO                               -- PI_IND_DESTINO
+                                             , V_CURSO_EXTENSAO                        -- PI_IND_CURSO_EXTENSAO
+                                             , T_TURMA(I).COD_PROFESSOR                -- PI_COD_PROFESSOR
+                                             , T_TURMA(I).NUM_MATRICULA                -- PI_NUM_MATRICULA
+                                             , T_TURMA(I).COD_TIPO_CURSO               -- PI_COD_TIPO_CURSO
+                                             , V_COD_CURSO                             -- PI_COD_CURSO
+                                             , V_COD_CURSO_EXTENSAO                    -- PI_COD_CURSO_EXTENSAO
+                                             , T_TURMA(I).COD_CAMPUS                   -- PI_COD_CAMPUS
+                                             , T_TURMA(I).COD_TURNO                    -- PI_COD_TURNO
+                                             , V_QTDE_HORAS_MOVIMENTO                  -- PI_QTD_HORAS_MOVIMENTO
+                                             , NULL                                    -- PI_VALOR_MOVIMENTO
+                                             , SYSDATE                                 -- PI_DT_GERACAO
+                                             , NULL                                    -- PI_DT_LIBERACAO
+                                             , NULL                                    -- PI_DT_PROCESSAMENTO
+                                             , NULL                                    -- PI_NUM_SEQ_SOLICITACAO
+                                             , T_TURMA(I).NUM_SEQ_ALOCACAO             -- PI_NUM_SEQ_ALOCACAO
+                                             , NULL                                    -- PI_NUM_SEQ_ATUACAO
+                                             , NULL                                    -- PI_MES_ANO_ATUACAO
+                                             , NULL                                    -- PI_NUM_SEQ_FALTA
+                                             , T_TURMA(I).APRIMORAMENTO                -- PI_PERCENTUAL_APRIMORAMENTO
+                                             , T_TURMA(I).COD_BANCO                    -- PI_COD_BANCO
+                                             , T_TURMA(I).COD_AGENCIA                  -- PI_COD_AGENCIA
+                                             , T_TURMA(I).COD_AGENCIA_DV               -- PI_COD_AGENCIA_DV
+                                             , T_TURMA(I).CONTA_CORRENTE               -- PI_COD_CONTA_CORRENTE
+                                             , T_TURMA(I).CONTA_CORRENTE_DV            -- PI_COD_CONTA_CORRENTE_DV
+                                             , T_TURMA(I).COD_CATEGORIA_PROFESSOR      -- PI_COD_CATEGORIA_PROFESSOR
+                                             , V_NUM_SEQ_TURMA                         -- PI_NUM_SEQ_TURMA
+                                             , V_COD_TURMA_EXTENSAO                    -- PI_COD_TURMA_EXTENSAO
+                                             , T_TURMA(I).IND_TIPO_CONTRATO            -- PI_IND_TIPO_CONTRATO
+                                             , P_COD_INSTITUICAO                       -- PI_COD_INSTITUICAO
+                                             , 'N'                                     -- PI_COMMIT
+                                             , P_IND_ERRO                              -- PO_IND_ERRO
+                                             , P_MSG_RETORNO                           -- PO_MSG_RETORNO
+                                             , NULL                                    -- PI_COD_TIPO_ATUACAO
+                                             , V_QTDE_HORAS_MOVIMENTO                  -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                                             , 'N'                                     -- PI_IND_ENSINO_DISTANCIA
+                                             , T_TURMA(I).QTD_DIA_TRABALHADO           -- PI_QTD_DIAS_TRABALHADOS
+                                             , NULL);                                  -- PI_QTD_HORAS_TEORICO
+                                --
+                                IF P_IND_ERRO <> '0' THEN
+                                  RAISE_APPLICATION_ERROR(-20010, P_IND_ERRO || ' - ' || P_MSG_RETORNO);
+                                END IF;
+                                --
+                                V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+                                --
+                                -- ADICIONAL NOTURNO FORMULA (((30/60)*4.5)/30) * TOTAL DE DIAS
+                                --
+                                -- IF R_AP.TURNO_TEMPO IN (35, 36) AND R_AP.IND_TELEPRESENCIAL = 'N' -- ALTERAÇÃO TURMA TELEPRESENCIAL
+                                -- ALTERAÇÃO PARA PAGAMENTO DE ADICIONAL NOTURNO
+                                IF T_TURMA(I).IND_TELEPRESENCIAL = 'N' THEN
+                                  --
+                                  IF TO_CHAR(T_TURMA(I).HH_FIM_AULA, 'HH24:MI') > '22:00' THEN
+                                    --
+                                    BEGIN
+                                      --
+                                      -- VERIFICA SE O PAGAMENTO DE ADICIONAL NOTURNO É PERMITIDO (CALCULA QTO PASSOU DE 22:00)
+                                      V_COD_TIPO_RUBRICA     := 2;
+                                      V_DURACAO_TEMPO_AD_NOT := (TO_NUMBER(T_TURMA(I).HH_FIM_AULA - (CASE WHEN TO_CHAR(T_TURMA(I).HH_INI_AULA, 'HH24MM') < '2200' THEN TO_DATE(TO_CHAR(T_TURMA(I).HH_INI_AULA, 'DD/MM/YYYY') || '22:00', 'DD/MM/YYYYHH24:MI') ELSE T_TURMA(I).HH_INI_AULA END)) * 3600 * 24) / 60;
+                                      V_CONT_RUBRICA_AD_NOT  := V_CONT_RUBRICA_AD_NOT + 1;
+                                      --
+                                      V_QTD_CARGA_MENSAL_AD_NOT := ((V_DURACAO_TEMPO_AD_NOT / 60) * 4.5);
+                                      --
+                                      V_POSICAO := 32;
+                                      --
+                                      -- 2.1. ATUALIZA A_INTERFACE_PAGAMENTO P/ INTEGRAL - ADICIONAL NOTURNO FORMULA (((30/60)*4.5)/30) * TOTAL DE DIAS
+                                      --
+                                      SELECT DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).COD_CURSO)
+                                            ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).COD_CURSO, NULL)
+                                            ,DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).NUM_SEQ_TURMA)
+                                            ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).NUM_SEQ_TURMA, NULL)
+                                            ,DECODE(V_COD_TIPO_RUBRICA, 1, V_QTD_CARGA_MENSAL, 42, V_QTD_CARGA_MENSAL, 43, V_QTD_CARGA_MENSAL, V_QTD_CARGA_MENSAL_AD_NOT)
+                                        INTO V_COD_CURSO
+                                            ,V_COD_CURSO_EXTENSAO
+                                            ,V_NUM_SEQ_TURMA
+                                            ,V_COD_TURMA_EXTENSAO
+                                            ,V_QTDE_HORAS_MOVIMENTO
+                                        FROM DUAL;
+                                      --
+                                      GRAVA_ARQUIVO( V_COD_TIPO_RUBRICA                -- PI_COD_TIPO_RUBRICA
+                                                   , P_DT_COMPETENCIA                  -- PI_DT_COMPETENCIA           (V_DT_COMPETENCIA)
+                                                   , V_PROXIMO_CICLO                   -- PI_PROXIMO_CICLO
+                                                   , 'PRO_RETROATIVO_ALOCACAO'         -- PI_NOM_PROCESSO
+                                                   , '1'                               -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                                                   , V_DESTINO                         -- PI_IND_DESTINO
+                                                   , V_CURSO_EXTENSAO                  -- PI_IND_CURSO_EXTENSAO
+                                                   , T_TURMA(I).COD_PROFESSOR          -- PI_COD_PROFESSOR
+                                                   , T_TURMA(I).NUM_MATRICULA          -- PI_NUM_MATRICULA
+                                                   , T_TURMA(I).COD_TIPO_CURSO         -- PI_COD_TIPO_CURSO
+                                                   , V_COD_CURSO                       -- PI_COD_CURSO
+                                                   , V_COD_CURSO_EXTENSAO              -- PI_COD_CURSO_EXTENSAO
+                                                   , T_TURMA(I).COD_CAMPUS             -- PI_COD_CAMPUS
+                                                   , T_TURMA(I).COD_TURNO              -- PI_COD_TURNO
+                                                   , V_QTDE_HORAS_MOVIMENTO            -- PI_QTD_HORAS_MOVIMENTO
+                                                   , NULL                              -- PI_VALOR_MOVIMENTO
+                                                   , SYSDATE                           -- PI_DT_GERACAO
+                                                   , NULL                              -- PI_DT_LIBERACAO
+                                                   , NULL                              -- PI_DT_PROCESSAMENTO
+                                                   , NULL                              -- PI_NUM_SEQ_SOLICITACAO
+                                                   , T_TURMA(I).NUM_SEQ_ALOCACAO       -- PI_NUM_SEQ_ALOCACAO
+                                                   , NULL                              -- PI_NUM_SEQ_ATUACAO
+                                                   , NULL                              -- PI_MES_ANO_ATUACAO
+                                                   , NULL                              -- PI_NUM_SEQ_FALTA
+                                                   , T_TURMA(I).APRIMORAMENTO          -- PI_PERCENTUAL_APRIMORAMENTO
+                                                   , T_TURMA(I).COD_BANCO              -- PI_COD_BANCO
+                                                   , T_TURMA(I).COD_AGENCIA            -- PI_COD_AGENCIA
+                                                   , T_TURMA(I).COD_AGENCIA_DV         -- PI_COD_AGENCIA_DV
+                                                   , T_TURMA(I).CONTA_CORRENTE         -- PI_COD_CONTA_CORRENTE
+                                                   , T_TURMA(I).CONTA_CORRENTE_DV      -- PI_COD_CONTA_CORRENTE_DV
+                                                   , T_TURMA(I).COD_CATEGORIA_PROFESSOR -- PI_COD_CATEGORIA_PROFESSOR
+                                                   , V_NUM_SEQ_TURMA                   -- PI_NUM_SEQ_TURMA
+                                                   , V_COD_TURMA_EXTENSAO              -- PI_COD_TURMA_EXTENSAO
+                                                   , T_TURMA(I).IND_TIPO_CONTRATO      -- PI_IND_TIPO_CONTRATO
+                                                   , P_COD_INSTITUICAO                 -- PI_COD_INSTITUICAO
+                                                   , 'N'                               -- PI_COMMIT
+                                                   , P_IND_ERRO                        -- PO_IND_ERRO
+                                                   , P_MSG_RETORNO                     -- PO_MSG_RETORNO
+                                                   , NULL                              -- PI_COD_TIPO_ATUACAO
+                                                   , NULL                              -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                                                   , 'N'                               -- PI_IND_ENSINO_DISTANCIA
+                                                   , T_TURMA(I).QTD_DIA_TRABALHADO     -- PI_QTD_DIAS_TRABALHADOS
+                                                   , NULL);                            -- PI_QTD_HORAS_TEORICO
+                                      --
+                                      IF P_IND_ERRO <> '0' THEN
+                                        RAISE_APPLICATION_ERROR(-20010, P_IND_ERRO || ' - ' || P_MSG_RETORNO);
+                                      END IF;
+                                      --
+                                      V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+                                      --
+                                    EXCEPTION
+                                    WHEN NO_DATA_FOUND THEN
+                                        NULL;
+                                    END;
+                                    --
+                                  END IF; -- IF TO_CHAR(R_AP.HH_FIM_AULA,'HH24MM') >'2200' THEN
+                                  --
+                                END IF; -- R_AP.TURNO_TEMPO IN (35, 36) AND R_AP.IND_TELEPRESENCIAL = 'N'
+                                --
+                              ELSE
+                                --
+                                -- CALCULA QTD DE A PAGAR. PROPORCIONAL
+                                V_QTD_DIAS_DIF := 0;
+                                --
+                                -- SE O MÊS DA DATA INICIAL FOR FEVEREIRO E
+                                -- SE FOR DO MESMO ANO DE COMPETENCIA E
+                                -- SE A DATA FINAL EXTRAPOLAR O MES DE COMPETENCIA ENTÃO CALCULA A DIFERENÇA PARA 30 DIAS
+                                --
+                                IF TO_CHAR(T_TURMA(I).DT_INI_ALOCACAO, 'MM') = '02' AND
+                                   TO_CHAR(T_TURMA(I).DT_INI_ALOCACAO, 'YYYY') = TO_CHAR(V_DT_COMPETENCIA,'YYYY') AND
+                                   T_TURMA(I).DT_FIM_ALOCACAO >= LAST_DAY(V_DT_COMPETENCIA)
+                                THEN
+                                  V_QTD_DIAS_DIF := 30 - TO_NUMBER(TO_CHAR(LAST_DAY(T_TURMA(I).DT_INI_ALOCACAO), 'DD'));
+                                END IF;
+                                --
+                                T_TURMA(I).QTD_DIA_TRABALHADO := T_TURMA(I).QTD_DIA_TRABALHADO + V_QTD_DIAS_DIF;
+                                --
+                                IF T_TURMA(I).QTD_DIA_TRABALHADO > 30 THEN
+                                  T_TURMA(I).QTD_DIA_TRABALHADO := 30;
+                                END IF;
+                                --
+                                V_QTD_CARGA_MENSAL := (T_TURMA(I).QTD_DIA_TRABALHADO * 0.15) * T_TURMA(I).VAL_HORA_AULA;
+                                --
+                                -- 3.1. ATUALIZA A_INTERFACE_PAGAMENTO P/ CALCULA QTD DE A PAGAR. PROPORCIONAL
+                                --
+                                V_POSICAO := 33;
+                                --
+                                SELECT DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).COD_CURSO)
+                                      ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).COD_CURSO, NULL)
+                                      ,DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).NUM_SEQ_TURMA)
+                                      ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).NUM_SEQ_TURMA, NULL)
+                                      ,DECODE(V_COD_TIPO_RUBRICA, 1, V_QTD_CARGA_MENSAL, 42, V_QTD_CARGA_MENSAL, 43, V_QTD_CARGA_MENSAL, V_QTD_CARGA_MENSAL_AD_NOT)
+                                  INTO V_COD_CURSO
+                                      ,V_COD_CURSO_EXTENSAO
+                                      ,V_NUM_SEQ_TURMA
+                                      ,V_COD_TURMA_EXTENSAO
+                                      ,V_QTDE_HORAS_MOVIMENTO
+                                  FROM DUAL;
+                                --
+                                GRAVA_ARQUIVO( V_COD_TIPO_RUBRICA                      -- PI_COD_TIPO_RUBRICA
+                                             , P_DT_COMPETENCIA                        -- PI_DT_COMPETENCIA           (V_DT_COMPETENCIA)
+                                             , V_PROXIMO_CICLO                         -- PI_PROXIMO_CICLO
+                                             , 'PRO_RETROATIVO_ALOCACAO'                 -- PI_NOM_PROCESSO
+                                             , '1'                                     -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                                             , V_DESTINO                               -- PI_IND_DESTINO
+                                             , V_CURSO_EXTENSAO                        -- PI_IND_CURSO_EXTENSAO
+                                             , T_TURMA(I).COD_PROFESSOR                -- PI_COD_PROFESSOR
+                                             , T_TURMA(I).NUM_MATRICULA                -- PI_NUM_MATRICULA
+                                             , T_TURMA(I).COD_TIPO_CURSO               -- PI_COD_TIPO_CURSO
+                                             , V_COD_CURSO                             -- PI_COD_CURSO
+                                             , V_COD_CURSO_EXTENSAO                    -- PI_COD_CURSO_EXTENSAO
+                                             , T_TURMA(I).COD_CAMPUS                   -- PI_COD_CAMPUS
+                                             , T_TURMA(I).COD_TURNO                    -- PI_COD_TURNO
+                                             , V_QTDE_HORAS_MOVIMENTO                  -- PI_QTD_HORAS_MOVIMENTO
+                                             , NULL                                    -- PI_VALOR_MOVIMENTO
+                                             , SYSDATE                                 -- PI_DT_GERACAO
+                                             , NULL                                    -- PI_DT_LIBERACAO
+                                             , NULL                                    -- PI_DT_PROCESSAMENTO
+                                             , NULL                                    -- PI_NUM_SEQ_SOLICITACAO
+                                             , T_TURMA(I).NUM_SEQ_ALOCACAO             -- PI_NUM_SEQ_ALOCACAO
+                                             , NULL                                    -- PI_NUM_SEQ_ATUACAO
+                                             , NULL                                    -- PI_MES_ANO_ATUACAO
+                                             , NULL                                    -- PI_NUM_SEQ_FALTA
+                                             , T_TURMA(I).APRIMORAMENTO                -- PI_PERCENTUAL_APRIMORAMENTO
+                                             , T_TURMA(I).COD_BANCO                    -- PI_COD_BANCO
+                                             , T_TURMA(I).COD_AGENCIA                  -- PI_COD_AGENCIA
+                                             , T_TURMA(I).COD_AGENCIA_DV               -- PI_COD_AGENCIA_DV
+                                             , T_TURMA(I).CONTA_CORRENTE               -- PI_COD_CONTA_CORRENTE
+                                             , T_TURMA(I).CONTA_CORRENTE_DV            -- PI_COD_CONTA_CORRENTE_DV
+                                             , T_TURMA(I).COD_CATEGORIA_PROFESSOR      -- PI_COD_CATEGORIA_PROFESSOR
+                                             , V_NUM_SEQ_TURMA                         -- PI_NUM_SEQ_TURMA
+                                             , V_COD_TURMA_EXTENSAO                    -- PI_COD_TURMA_EXTENSAO
+                                             , T_TURMA(I).IND_TIPO_CONTRATO            -- PI_IND_TIPO_CONTRATO
+                                             , P_COD_INSTITUICAO                       -- PI_COD_INSTITUICAO
+                                             , 'N'                                     -- PI_COMMIT
+                                             , P_IND_ERRO                              -- PO_IND_ERRO
+                                             , P_MSG_RETORNO                           -- PO_MSG_RETORNO
+                                             , NULL                                    -- PI_COD_TIPO_ATUACAO
+                                             , V_QTDE_HORAS_MOVIMENTO                  -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                                             , 'N'                                     -- PI_IND_ENSINO_DISTANCIA
+                                             , T_TURMA(I).QTD_DIA_TRABALHADO           -- PI_QTD_DIAS_TRABALHADOS
+                                             , NULL);                                  -- PI_QTD_HORAS_TEORICO
+                                --
+                                IF P_IND_ERRO <> '0'  THEN
+                                  RAISE_APPLICATION_ERROR(-20010, P_IND_ERRO || ' - ' || P_MSG_RETORNO);
+                                END IF;
+                                --
+                                V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+                                --
+                                -- ADICIONAL NOTURNO FORMULA (((30/60)*4.5)/30) * TOTAL DE DIAS
+                                --
+                                --IF R_AP.TURNO_TEMPO IN (35, 36) AND R_AP.IND_TELEPRESENCIAL = 'N' -- ALTERAÇÃO TURMA TELEPRESENCIAL
+                                -- ALTERAÇÃO PARA PAGAMENTO DE ADICIONAL NOTURNO
+                                IF T_TURMA(I).IND_TELEPRESENCIAL = 'N' THEN
+                                  --
+                                  IF TO_CHAR(T_TURMA(I).HH_FIM_AULA, 'HH24:MI') > '22:00' THEN
+                                    --
+                                    BEGIN
+                                      V_POSICAO := 33;
+                                      --
+                                      -- VERIFICA SE O PAGAMENTO DE ADICIONAL NOTURNO É PERMITIDO
+                                      V_COD_TIPO_RUBRICA     := 2;
+                                      V_DURACAO_TEMPO_AD_NOT := (TO_NUMBER(T_TURMA(I).HH_FIM_AULA - (CASE WHEN TO_CHAR(T_TURMA(I).HH_INI_AULA, 'HH24MM') < '2200' THEN TO_DATE(TO_CHAR(T_TURMA(I).HH_INI_AULA, 'DD/MM/YYYY') || '22:00', 'DD/MM/YYYYHH24:MI') ELSE T_TURMA(I).HH_INI_AULA END)) * 3600 * 24) / 60; -- CALCULA QTO PASSOU DE 22:00
+                                      V_CONT_RUBRICA_AD_NOT  := V_CONT_RUBRICA_AD_NOT + 1;
+                                      --
+                                      V_QTD_CARGA_MENSAL_AD_NOT := (((V_DURACAO_TEMPO_AD_NOT / 60) * 4.5) / 30) * T_TURMA(I).QTD_DIA_TRABALHADO;
+                                      --
+                                      -- 3.2. ATUALIZA A_INTERFACE_PAGAMENTO P/ ADICIONAL NOTURNO FORMULA (((30/60)*4.5)/30) * TOTAL DE DIAS
+                                      SELECT DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).COD_CURSO)
+                                            ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).COD_CURSO, NULL)
+                                            ,DECODE(T_TURMA(I).TABELA, 'HTE', NULL, T_TURMA(I).NUM_SEQ_TURMA)
+                                            ,DECODE(T_TURMA(I).TABELA, 'HTE', T_TURMA(I).NUM_SEQ_TURMA, NULL)
+                                            ,DECODE(V_COD_TIPO_RUBRICA, 1, V_QTD_CARGA_MENSAL, 42, V_QTD_CARGA_MENSAL, 43, V_QTD_CARGA_MENSAL, V_QTD_CARGA_MENSAL_AD_NOT)
+                                        INTO V_COD_CURSO
+                                            ,V_COD_CURSO_EXTENSAO
+                                            ,V_NUM_SEQ_TURMA
+                                            ,V_COD_TURMA_EXTENSAO
+                                            ,V_QTDE_HORAS_MOVIMENTO
+                                        FROM DUAL;
+                                      --
+                                      GRAVA_ARQUIVO( V_COD_TIPO_RUBRICA                -- PI_COD_TIPO_RUBRICA
+                                                   , P_DT_COMPETENCIA                  -- PI_DT_COMPETENCIA           (V_DT_COMPETENCIA)
+                                                   , V_PROXIMO_CICLO                   -- PI_PROXIMO_CICLO
+                                                   , 'PRO_RETROATIVO_ALOCACAO'         -- PI_NOM_PROCESSO
+                                                   , '1'                               -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                                                   , V_DESTINO                         -- PI_IND_DESTINO
+                                                   , V_CURSO_EXTENSAO                  -- PI_IND_CURSO_EXTENSAO
+                                                   , T_TURMA(I).COD_PROFESSOR          -- PI_COD_PROFESSOR
+                                                   , T_TURMA(I).NUM_MATRICULA          -- PI_NUM_MATRICULA
+                                                   , T_TURMA(I).COD_TIPO_CURSO         -- PI_COD_TIPO_CURSO
+                                                   , V_COD_CURSO                       -- PI_COD_CURSO
+                                                   , V_COD_CURSO_EXTENSAO              -- PI_COD_CURSO_EXTENSAO
+                                                   , T_TURMA(I).COD_CAMPUS             -- PI_COD_CAMPUS
+                                                   , T_TURMA(I).COD_TURNO              -- PI_COD_TURNO
+                                                   , V_QTDE_HORAS_MOVIMENTO            -- PI_QTD_HORAS_MOVIMENTO
+                                                   , NULL                              -- PI_VALOR_MOVIMENTO
+                                                   , SYSDATE                           -- PI_DT_GERACAO
+                                                   , NULL                              -- PI_DT_LIBERACAO
+                                                   , NULL                              -- PI_DT_PROCESSAMENTO
+                                                   , NULL                              -- PI_NUM_SEQ_SOLICITACAO
+                                                   , T_TURMA(I).NUM_SEQ_ALOCACAO       -- PI_NUM_SEQ_ALOCACAO
+                                                   , NULL                              -- PI_NUM_SEQ_ATUACAO
+                                                   , NULL                              -- PI_MES_ANO_ATUACAO
+                                                   , NULL                              -- PI_NUM_SEQ_FALTA
+                                                   , T_TURMA(I).APRIMORAMENTO          -- PI_PERCENTUAL_APRIMORAMENTO
+                                                   , T_TURMA(I).COD_BANCO              -- PI_COD_BANCO
+                                                   , T_TURMA(I).COD_AGENCIA            -- PI_COD_AGENCIA
+                                                   , T_TURMA(I).COD_AGENCIA_DV         -- PI_COD_AGENCIA_DV
+                                                   , T_TURMA(I).CONTA_CORRENTE         -- PI_COD_CONTA_CORRENTE
+                                                   , T_TURMA(I).CONTA_CORRENTE_DV      -- PI_COD_CONTA_CORRENTE_DV
+                                                   , T_TURMA(I).COD_CATEGORIA_PROFESSOR -- PI_COD_CATEGORIA_PROFESSOR
+                                                   , V_NUM_SEQ_TURMA                   -- PI_NUM_SEQ_TURMA
+                                                   , V_COD_TURMA_EXTENSAO              -- PI_COD_TURMA_EXTENSAO
+                                                   , T_TURMA(I).IND_TIPO_CONTRATO      -- PI_IND_TIPO_CONTRATO
+                                                   , P_COD_INSTITUICAO                 -- PI_COD_INSTITUICAO
+                                                   , 'N'                               -- PI_COMMIT
+                                                   , P_IND_ERRO                        -- PO_IND_ERRO
+                                                   , P_MSG_RETORNO                     -- PO_MSG_RETORNO
+                                                   , NULL                              -- PI_COD_TIPO_ATUACAO
+                                                   , NULL                              -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                                                   , 'N'                               -- PI_IND_ENSINO_DISTANCIA
+                                                   , T_TURMA(I).QTD_DIA_TRABALHADO     -- PI_QTD_DIAS_TRABALHADOS
+                                                   , NULL);                            -- PI_QTD_HORAS_TEORICO
+                                      --
+                                      IF P_IND_ERRO <> '0' THEN
+                                         RAISE_APPLICATION_ERROR(-20010, P_IND_ERRO || ' - ' || P_MSG_RETORNO);
+                                      END IF;
+                                      --
+                                      V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+                                      --
+                                    EXCEPTION
+                                    WHEN NO_DATA_FOUND THEN
+                                        NULL;
+                                    END;
+                                    --
+                                  END IF; -- IF TO_CHAR(R_AP.HH_FIM_AULA,'HH24MM') >'2200' THEN
+                                  --
+                                END IF; -- R_AP.TURNO_TEMPO IN (35, 36) AND R_AP.IND_TELEPRESENCIAL = 'N'
+                                --
+                              END IF; -- IF VET_ALOCACAO(P_NUM_SEQ_ALOCACAO_OK) >= 30 ...
+
+                      EXCEPTION
+                      WHEN OTHERS THEN
+                          P_MSG_RETORNO := 'HOUVE UMA FALHA AO GERAR QUANTIDADE DE HORAS : ' || SQLERRM || V_NUM_SEQ_ERRO;
+                          V_ERRO_ORACLE := SQLERRM;
+                          RAISE ERR_NAO_PREVISTO;
+                      END; -- BEGIN
+
+                      --
+                      -- COMMIT A CADA 1000 REGISTROS
+                      --
+                      IF MOD(V_QTD_REG_GRAVADOS, 1000) = 0 AND
+                         P_COMMIT = 'S' THEN
+                         COMMIT;
+                      END IF;
+                      --
+                   END IF;
+                   --
+                END LOOP; -- T_TURMA.COUNT
+                --
+                V_DT_COMPETENCIA := ADD_MONTHS(V_DT_COMPETENCIA,1);
+                --
+            END LOOP; -- WHILE V_DT_COMPETENCIA
+            --
+        END LOOP;  -- C_PROFESSOR
+
+        --
+        V_POSICAO := 140;
+        --
+        P_MSG_RETORNO := 'QTDE DE REGISTROS HT : '  || V_CONT_HT  || CHR(13) ||
+                         'QTDE DE REGISTROS HTV : ' || V_CONT_HTV || CHR(13) ||
+                         'QTDE DE REGISTROS HTE: '  || V_CONT_HTE || CHR(13) ||
+                         'QTDE DE REGISTROS DT : '  || V_CONT_DT  || CHR(13) ||
+                         'QTDE DE REGISTROS ENVIADOS AO RH : ' || V_CONT_DESTINO_RH ||CHR(13) ||
+                         'QTDE DE REGISTROS ENVIADOS AO FIN: ' || V_CONT_DESTINO_FIN || CHR(13) ||
+                         'QTDE DE REGISTROS NÃO PERTENCENTES AOS TIPOS DE CURSO GRADUACAO E POLITECNICO: ' || V_QTDE_OUTROS_TP_CURSOS;
+        --
+        IF (NVL(V_CONT_DESTINO_RH,0) + NVL(V_CONT_DESTINO_FIN,0)) > 0 THEN
+            --
+            BEGIN
+              --
+              -- INCLUI O SISTÉTICO DO PROCESSO
+              --
+              BEGIN
+                  V_COD_INSTITUICAO_FILTRO := TO_NUMBER(P_COD_INSTITUICAO);
+              EXCEPTION
+              WHEN OTHERS THEN
+                  V_COD_INSTITUICAO_FILTRO := NULL;
+              END;
+              --
+              V_POSICAO := 200;
+              --
+              INSERT INTO SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+                (DT_MES_ANO_COMPETENCIA
+                ,NOM_PROCESSO
+                ,CICLO
+                ,IND_TIPO_PROCESSO
+                 --                          , COD_PROFESSOR
+                ,NUM_SEQ_DADOS_PROFESSOR
+                ,COD_CAMPUS
+                ,COD_TIPO_CURSO
+                ,QTD_GRAVADOS_IP
+                ,DT_INICIO_GERACAO
+                ,DT_FIM_GERACAO
+                ,IND_RETORNO
+                ,TXT_MSG_PROCESSO
+                ,TOTAL_REGS_RUBRICA_1
+                ,TOTAL_REGS_RUBRICA_2
+                ,TOTAL_HORAS_RUBRICA_1
+                ,TOTAL_HORAS_RUBRICA_2
+                ,QTD_REGS_DESTINO_1
+                ,QTD_REGS_DESTINO_2
+                ,IND_TIPO_CONTRATO
+                ,COD_USUARIO_LOG
+                ,DT_INICIO_SELECAO
+                ,DT_FIM_SELECAO
+                ,COD_INSTITUICAO)
+              VALUES
+                (P_DT_COMPETENCIA
+                ,'PRO_RETROATIVO_ALOCACAO'
+                ,V_PROXIMO_CICLO
+                ,P_IND_TIPO_PROCESSO
+                 --                          , P_COD_PROFESSOR
+                ,P_NUM_SEQ_DADOS_PROFESSOR
+                ,P_COD_CAMPUS
+                ,P_COD_TIPO_CURSO
+                ,V_CONT_GRAVADOS_IP
+                ,V_START
+                ,SYSDATE
+                ,P_IND_ERRO
+                ,P_MSG_RETORNO
+                ,V_CONT_RUBRICA_CARGA_HR
+                ,V_CONT_RUBRICA_AD_NOT
+                ,V_QTD_CARGA_MENSAL_HR
+                ,V_QTD_CARGA_MENSAL_AD_NOT
+                ,V_CONT_DESTINO_RH
+                ,V_CONT_DESTINO_FIN
+                ,P_IND_TIPO_CONTRATO
+                ,P_COD_USUARIO
+                ,TRUNC(ADD_MONTHS(P_DT_COMPETENCIA,-2),'MM')
+                ,LAST_DAY(ADD_MONTHS(P_DT_COMPETENCIA,-1))
+                ,V_COD_INSTITUICAO_FILTRO);
+              --
+            EXCEPTION
+            WHEN OTHERS THEN
+                P_MSG_RETORNO := 'HOUVE UMA FALHA AO INCLUIR NA TABELA "CONTROLE_PAGAMENTO_PROFESSOR".';
+                V_ERRO_ORACLE := SQLERRM;
+                RAISE ERR_NAO_PREVISTO;
+            END;
+            --
+        END IF;
+        --
+        --**************************************************************************
+        -- ATUALIZA ALOCAÇÃO DE PROFESSOR PARA INDICAÇÃO DE GERAÇÃO DE PAGAMENTO ***
+        --**************************************************************************
+        BEGIN
+          --
+          V_POSICAO := 210;
+          --
+          UPDATE SIA.ALOCACAO_PROFESSOR AP
+             SET AP.DT_GERACAO_PAGAMENTO = SYSDATE
+           WHERE AP.DT_GERACAO_PAGAMENTO IS NULL
+             AND EXISTS (SELECT 1
+                           FROM SIA.A_INTERFACE_PAGAMENTO IP
+                          WHERE TRUNC(IP.DT_MES_ANO_COMPETENCIA, 'MM') = TRUNC(P_DT_COMPETENCIA, 'MM')
+                            AND IP.NUM_SEQ_ALOCACAO = AP.NUM_SEQ_ALOCACAO
+                            AND IP.COD_PROFESSOR = AP.COD_PROFESSOR
+                            AND IP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                            AND IP.NOM_PROCESSO = 'PRO_RETROATIVO_ALOCACAO');
+          --
+        EXCEPTION
+        WHEN OTHERS THEN
+            P_MSG_RETORNO := 'ERRO AO ATUALIZAR INDICAÇÃO DE PAGAMENTO NA ALOCAÇÃO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        IF P_COMMIT = 'S' THEN
+          COMMIT;
+        END IF;
+        --
+        GRAVA_LOG('FIM DO PROCESSAMENTO.  OPERAÇÃO REALIZADA COM SUCESSO.', 0);
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --
+      EXCEPTION
+        WHEN ERR_ADVERTENCIA THEN
+          P_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          P_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          P_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          V_ERRO_ORACLE := SQLERRM;
+          P_MSG_RETORNO := V_POSICAO || ' - ' || V_ERRO_ORACLE;
+          P_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+      END;
+      --
+    EXCEPTION
+    WHEN ERR_TRATA_ERRO THEN
+        --
+        IF P_COMMIT = 'S' THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF P_IND_ERRO = '2' THEN
+          --
+          SEG.SEG_LOG_EXECUCAO('PRO_RETROATIVO_ALOCACAO, IE: ' || P_COD_INSTITUICAO
+                              , V_POSICAO
+                              , V_ERRO_ORACLE
+                              , V_TXT_PARAMETROS
+                              , P_MSG_RETORNO);
+          --
+        END IF;
+        --
+    END;
+    --
+  END PRO_RETROATIVO_ALOCACAO;
+
+
+  PROCEDURE PRO_RETROATIVO_TURMA_ONLINE(P_DT_COMPETENCIA          IN DATE
+                                       ,P_NUM_SEQ_DADOS_PROFESSOR IN VARCHAR2 DEFAULT NULL
+                                       ,P_COD_TIPO_CURSO          IN NUMBER DEFAULT NULL
+                                       ,P_COD_CAMPUS              IN NUMBER DEFAULT NULL
+                                       ,P_IND_TIPO_PROCESSO       IN VARCHAR2 DEFAULT NULL
+                                       ,P_IND_TIPO_CONTRATO       IN VARCHAR2 DEFAULT NULL
+                                       ,P_COD_USUARIO             IN VARCHAR2
+                                       ,P_COMMIT                  IN VARCHAR2
+                                       ,P_IND_ERRO                OUT VARCHAR2
+                                       ,P_MSG_RETORNO             OUT VARCHAR2
+                                       ,P_COD_INSTITUICAO         IN VARCHAR2) IS
+    --
+    -- P_IND_TIPO_PROCESSO  (G) GERAL
+    --                      (P) PARCIAL: CHAMADA ISOLADAMENTE
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    --NOME_PADRAO             CONSTANT VARCHAR2(30) := 'CH';
+    V_ERRO_ORACLE VARCHAR2(4000);
+    --V_IND_ERRO                       VARCHAR2(1);
+    --V_MSG_RETORNO                    VARCHAR2(4000);
+    V_TXT_PARAMETROS      VARCHAR2(4000);
+    V_POSICAO             PLS_INTEGER;
+    V_DESTINO             INTEGER;
+    V_CONT_DESTINO_RH     PLS_INTEGER;
+    V_CONT_DESTINO_FIN    PLS_INTEGER;
+    V_CONT_GRAVADOS_IP    PLS_INTEGER;
+    V_QTDE_DIAS_TRAB      NUMBER(10);
+
+    V_QTD_REG_GRAVADOS      PLS_INTEGER;
+    V_QTDE_OUTROS_TP_CURSOS PLS_INTEGER;
+    V_DIA_INI               PLS_INTEGER;
+    V_DIA_FIM               PLS_INTEGER;
+    V_PROXIMO_CICLO         PLS_INTEGER;
+    V_QTDE_HORA_MOVIMENTO   NUMBER(12, 2);
+    V_VALOR_MOVIMENTO       NUMBER(12, 2);
+
+    V_ACHOU                  PLS_INTEGER;
+    V_CURSO_EXTENSAO         VARCHAR2(1);
+    V_COD_TIPO_RUBRICA       PLS_INTEGER;
+    V_COD_INSTITUICAO_FILTRO NUMBER(6, 0);
+    V_DT_ULTIMA_GERACAO      DATE;
+    V_DT_COMPETENCIA_1       DATE;
+    V_DT_COMPETENCIA_2       DATE;
+    --
+    CURSOR C_AP IS
+      SELECT VAP.COD_PROFESSOR
+            ,VAP.NUM_SEQ_DADOS_PROFESSOR
+            ,VAP.TIPO_CURSO COD_TIPO_CURSO
+            ,VAP.DT_INICIO_ALOCACAO
+            ,VAP.DT_FIM_ALOCACAO
+            ,VAP.HORA_INI
+            ,VAP.HORA_FIM
+            ,VAP.COD_CAMPUS
+            ,VAP.COD_CURSO
+            ,VAP.COD_TURNO
+            ,NULL AS COD_CURSO_EXTENSAO
+            ,VAP.IND_SUBSTITUICAO_PROF
+            ,VAP.DT_SUBSTITUICAO_PROF
+            ,VAP.NUM_MATRICULA
+            ,VAP.NUM_SEQ_PERIODO_ACADEMICO
+            ,VAP.PK_TURMA AS NUM_SEQ_TURMA
+            ,VAP.NUM_SEQ_ALOCACAO
+            ,VAP.IND_TIPO_CONTRATO
+            ,VAP.PERCENTUAL_APRIMORAMENTO
+            ,VAP.COD_BANCO
+            ,VAP.COD_AGENCIA
+            ,VAP.COD_AGENCIA_DV
+            ,VAP.CONTA_CORRENTE
+            ,VAP.CONTA_CORRENTE_DV
+            ,VAP.COD_CATEGORIA_PROFESSOR
+            ,VAP.CPF_PROFESSOR
+            ,VAP.IND_ENSINO_DISTANCIA
+            ,VAP.CARGA_SEMANAL
+            ,VAP.CARGA_SEMANAL_GC
+            ,VAP.NUM_SEQ_COMPOSICAO
+            ,VAP.HH_INICIO_AULA
+            ,VAP.HH_FIM_AULA
+            ,VAP.VAL_HORA_AULA
+            ,VAP.COD_INSTITUICAO
+            ,V_DT_COMPETENCIA_1  AS DT_COMPETENCIA
+            ,TU.QTD_HORAS_TEORICO
+        FROM SIA.V_ALOCACAO_PROFESSOR VAP
+            ,SIA.TURMA TU
+       WHERE VAP.PK_TURMA = TU.NUM_SEQ_TURMA
+         AND V_DT_COMPETENCIA_1 BETWEEN TRUNC(VAP.DT_INICIO_ALOCACAO,'MM')
+                                    AND TRUNC(VAP.DT_FIM_ALOCACAO,'MM')
+         AND NVL(VAP.IND_SUBSTITUICAO_PROF, 'N') = 'N'
+         AND NVL(VAP.QTD_ALUNOS_MATRICULADOS, 0) > 0
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR VAP.NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR VAP.TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR VAP.COD_CAMPUS = P_COD_CAMPUS)
+         AND VAP.COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND VAP.DT_INCLUSAO     > V_DT_ULTIMA_GERACAO
+         AND VAP.DT_GERACAO_PAGAMENTO IS NULL
+         AND VAP.IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND NVL(VAP.IND_PAGAMENTO_ALOCACAO,'S') = 'S' -- SELECIONA APENAS AS ALOCAÇÕES COM INDICAÇÃO DE PAGAMENTO
+         --
+         AND (P_IND_TIPO_CONTRATO IS NULL OR VAP.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+            --
+         AND VAP.TABELA = 'HTV' -- TURMA VIRTUAL
+         --
+         AND VAP.TIPO_CURSO IN (4,11) -- TIPOS DE CURSO GRADUAÇÃO E GRADUAÇÃO TECNOLÓGICA - SRD 1647
+         --
+         -- BLOQUEIO DE PERMISSÃO DE PAGAMENTO PARA UMA DETERMINADA COMPETÊNCIA (MALUQUINHA)
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+                          WHERE VP.COD_TIPO_CURSO = VAP.TIPO_CURSO
+                            AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                            AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(VP.DT_INI_VIGENCIA,'MM')
+                                                                  AND TRUNC(VP.DT_FIM_VIGENCIA,'MM')
+                            AND ((VP.COD_CURSO IS NULL AND VAP.COD_CURSO = VAP.COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VAP.COD_CURSO = VP.COD_CURSO)))
+         --
+         -- PAGAMENTO BLOQUEADO PARA O PROFESSOR
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.BLOQUEIO_PAGAMENTO_RETROATIVO BLOQ
+                          WHERE BLOQ.COD_PROFESSOR = VAP.COD_PROFESSOR
+                            AND BLOQ.NUM_SEQ_ALOCACAO IS NULL
+                            AND BLOQ.DT_MES_ANO_COMPETENCIA = TRUNC(P_DT_COMPETENCIA,'MM'))
+         --
+         -- PAGAMENTO BLOQUEADO PARA A ALOCAÇÃO
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.BLOQUEIO_PAGAMENTO_RETROATIVO BLOQ
+                          WHERE BLOQ.NUM_SEQ_ALOCACAO = VAP.NUM_SEQ_ALOCACAO
+                            AND BLOQ.COD_PROFESSOR    = VAP.COD_PROFESSOR
+                            AND BLOQ.DT_MES_ANO_COMPETENCIA = TRUNC(P_DT_COMPETENCIA,'MM'))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND VAP.IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = VAP.NUM_MATRICULA)
+-- SRD 1705-Importação CH Docente SIA x ADP (FAL e FATERN) - NÃO PAGAR RETROATIVO
+AND VAP.COD_INSTITUICAO NOT IN (1022,1809,1464) 
+--
+      --
+      UNION ALL
+      --
+      SELECT VAP.COD_PROFESSOR
+            ,VAP.NUM_SEQ_DADOS_PROFESSOR
+            ,VAP.TIPO_CURSO COD_TIPO_CURSO
+            ,VAP.DT_INICIO_ALOCACAO
+            ,VAP.DT_FIM_ALOCACAO
+            ,VAP.HORA_INI
+            ,VAP.HORA_FIM
+            ,VAP.COD_CAMPUS
+            ,VAP.COD_CURSO
+            ,VAP.COD_TURNO
+            ,NULL AS COD_CURSO_EXTENSAO
+            ,VAP.IND_SUBSTITUICAO_PROF
+            ,VAP.DT_SUBSTITUICAO_PROF
+            ,VAP.NUM_MATRICULA
+            ,VAP.NUM_SEQ_PERIODO_ACADEMICO
+            ,VAP.PK_TURMA AS NUM_SEQ_TURMA
+            ,VAP.NUM_SEQ_ALOCACAO
+            ,VAP.IND_TIPO_CONTRATO
+            ,VAP.PERCENTUAL_APRIMORAMENTO
+            ,VAP.COD_BANCO
+            ,VAP.COD_AGENCIA
+            ,VAP.COD_AGENCIA_DV
+            ,VAP.CONTA_CORRENTE
+            ,VAP.CONTA_CORRENTE_DV
+            ,VAP.COD_CATEGORIA_PROFESSOR
+            ,VAP.CPF_PROFESSOR
+            ,VAP.IND_ENSINO_DISTANCIA
+            ,VAP.CARGA_SEMANAL
+            ,VAP.CARGA_SEMANAL_GC
+            ,VAP.NUM_SEQ_COMPOSICAO
+            ,VAP.HH_INICIO_AULA
+            ,VAP.HH_FIM_AULA
+            ,VAP.VAL_HORA_AULA
+            ,VAP.COD_INSTITUICAO
+            ,V_DT_COMPETENCIA_2  AS DT_COMPETENCIA
+            ,TU.QTD_HORAS_TEORICO
+        FROM SIA.V_ALOCACAO_PROFESSOR VAP
+            ,SIA.TURMA TU
+       WHERE VAP.PK_TURMA = TU.NUM_SEQ_TURMA
+         AND V_DT_COMPETENCIA_2 BETWEEN TRUNC(VAP.DT_INICIO_ALOCACAO,'MM')
+                                    AND TRUNC(VAP.DT_FIM_ALOCACAO,'MM')
+         AND NVL(VAP.IND_SUBSTITUICAO_PROF, 'N') = 'N'
+         AND NVL(VAP.QTD_ALUNOS_MATRICULADOS, 0) > 0
+         AND (P_NUM_SEQ_DADOS_PROFESSOR IS NULL OR VAP.NUM_SEQ_DADOS_PROFESSOR = P_NUM_SEQ_DADOS_PROFESSOR)
+         AND (P_COD_TIPO_CURSO IS NULL OR VAP.TIPO_CURSO = P_COD_TIPO_CURSO)
+         AND (P_COD_CAMPUS IS NULL OR VAP.COD_CAMPUS = P_COD_CAMPUS)
+         AND VAP.COD_INSTITUICAO = P_COD_INSTITUICAO
+         AND VAP.DT_INCLUSAO     > V_DT_ULTIMA_GERACAO
+         AND VAP.DT_GERACAO_PAGAMENTO IS NULL
+         AND VAP.IND_PAGAMENTO = 'S' -- SELECIONA APENAS AS TURMAS COM INDICAÇÃO DE PAGAMENTO
+         AND (P_IND_TIPO_CONTRATO IS NULL OR VAP.IND_TIPO_CONTRATO = P_IND_TIPO_CONTRATO)
+         --
+         AND VAP.TABELA = 'HTV' -- TURMA VIRTUAL
+         --
+         AND VAP.TIPO_CURSO IN (4,11) -- TIPOS DE CURSO GRADUAÇÃO E GRADUAÇÃO TECNOLÓGICA
+         --
+         -- BLOQUEIO DE PERMISSÃO DE PAGAMENTO PARA UMA DETERMINADA COMPETÊNCIA (MALUQUINHA)
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.VIGENCIA_BLOQUEIO_PAGAMENTO VP
+                          WHERE VP.COD_TIPO_CURSO = VAP.TIPO_CURSO
+                            AND VP.COD_INSTITUICAO = P_COD_INSTITUICAO
+                            AND TRUNC(P_DT_COMPETENCIA, 'MM') BETWEEN TRUNC(VP.DT_INI_VIGENCIA,'MM')
+                                                                  AND TRUNC(VP.DT_FIM_VIGENCIA,'MM')
+                            AND ((VP.COD_CURSO IS NULL AND VAP.COD_CURSO = VAP.COD_CURSO) OR (VP.COD_CURSO IS NOT NULL AND VAP.COD_CURSO = VP.COD_CURSO)))
+         --
+         -- PAGAMENTO BLOQUEADO PARA O PROFESSOR
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.BLOQUEIO_PAGAMENTO_RETROATIVO BLOQ
+                          WHERE BLOQ.COD_PROFESSOR = VAP.COD_PROFESSOR
+                            AND BLOQ.NUM_SEQ_ALOCACAO IS NULL
+                            AND BLOQ.DT_MES_ANO_COMPETENCIA = TRUNC(P_DT_COMPETENCIA,'MM'))
+         --
+         -- PAGAMENTO BLOQUEADO PARA A ALOCAÇÃO
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.BLOQUEIO_PAGAMENTO_RETROATIVO BLOQ
+                          WHERE BLOQ.NUM_SEQ_ALOCACAO = VAP.NUM_SEQ_ALOCACAO
+                            AND BLOQ.COD_PROFESSOR    = VAP.COD_PROFESSOR
+                            AND BLOQ.DT_MES_ANO_COMPETENCIA = TRUNC(P_DT_COMPETENCIA,'MM'))
+         --
+         -- PAGAMAMENTO APENAS DOS DOCENTES HORISTAS.
+         AND VAP.IND_TIPO_SALARIO = 'H'
+         --
+         -- BLOQUEIO DE PAGAMAMENTO DOS DOCENTES QUE SÃO ADMINISTRATIVOS NO RH.
+         AND NOT EXISTS (SELECT 1
+                           FROM SIA.ADMINISTRATIVO_RH ARH
+                          WHERE ARH.NUM_MATRICULA = VAP.NUM_MATRICULA)
+-- SRD 1705-Importação CH Docente SIA x ADP (FAL e FATERN) - NÃO PAGAR RETROATIVO
+AND VAP.COD_INSTITUICAO NOT IN (1022,1809,1464) 
+--
+       --
+       ORDER BY DT_COMPETENCIA
+               ,NUM_SEQ_DADOS_PROFESSOR
+               ,COD_PROFESSOR
+               ,NUM_SEQ_ALOCACAO;
+    --
+    R_AP C_AP%ROWTYPE;
+    --
+    --
+  BEGIN
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        V_QTD_REG_GRAVADOS      := 0;
+        V_QTDE_OUTROS_TP_CURSOS := 0;
+        V_DESTINO               := 1;
+        V_CONT_DESTINO_RH       := 0;
+        V_CONT_DESTINO_FIN      := 0;
+        V_CONT_GRAVADOS_IP      := 0;
+        --
+        V_TXT_PARAMETROS := ' P_DT_COMPETENCIA   : ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || CHR(13) || ' P_NUM_SEQ_DADOS_PROFESSOR : ' || P_NUM_SEQ_DADOS_PROFESSOR || CHR(13) || ' P_COD_TIPO_CURSO   : ' || P_COD_TIPO_CURSO || CHR(13) || ' P_COD_CAMPUS       : ' || P_COD_CAMPUS || CHR(13) ||
+                            ' P_IND_TIPO_PROCESSO: ' || P_IND_TIPO_PROCESSO || CHR(13) || ' P_IND_TIPO_CONTRATO: ' || P_IND_TIPO_CONTRATO || CHR(13) || ' P_COD_INSTITUICAO  : ' || P_COD_INSTITUICAO;
+        --
+        -- 1. VALIDA PARÂMETROS OBRIGATÓRIOS
+        --
+        V_POSICAO := 10;
+        --
+        IF P_DT_COMPETENCIA IS NULL THEN
+          P_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        IF P_IND_TIPO_PROCESSO IS NULL THEN
+          P_MSG_RETORNO := 'O TIPO DE PROCESSO DEVE SER INFORMADO.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        V_POSICAO := 20;
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_RETROATIVO_TURMA_ONLINE';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'O PROCESSO "PRO_RETROATIVO_TURMA_ONLINE" DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- BUSCA DIA DE GERAÇÃO DO MES ANTERIOR - PRO_APURACAO_ALOCACAO
+        BEGIN
+          --
+          SELECT MAX(TRUNC(CPP.DT_INICIO_GERACAO))
+            INTO V_DT_ULTIMA_GERACAO
+            FROM SIA.CONTROLE_PAGAMENTO_PROFESSOR CPP
+           WHERE CPP.NOM_PROCESSO = 'PRO_APURACAO_TURMA_ONLINE'
+             AND CPP.COD_INSTITUICAO = P_COD_INSTITUICAO;
+          --
+        EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODOS ANTERIORES, NO PROCESSO DE TURMA ONLINE.';
+            RAISE ERR_ADVERTENCIA;
+        END;
+
+        IF V_DT_ULTIMA_GERACAO IS NULL THEN
+            P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODOS ANTERIORES, NO PROCESSO DE TURMA ONLINE.';
+            RAISE ERR_ADVERTENCIA;
+        END IF;
+
+        V_DT_COMPETENCIA_1 := ADD_MONTHS(TRUNC(P_DT_COMPETENCIA,'MM'),-1);
+        V_DT_COMPETENCIA_2 := ADD_MONTHS(TRUNC(P_DT_COMPETENCIA,'MM'),-2);
+        --
+        -- 3. ABRE O CURSOR E CARREGA AS LINHAS NO REGISTRO ANTERIOR (R_AP_ANT)
+        --
+        V_POSICAO := 30;
+        --
+        OPEN C_AP;
+        FETCH C_AP
+          INTO R_AP;
+        --
+        IF C_AP%NOTFOUND 
+        THEN
+          P_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODO ' || TO_CHAR(P_DT_COMPETENCIA, 'MM/YYYY') || ' NO PROCESSO DE TURMA ONLINE.';
+          RAISE ERR_ADVERTENCIA;
+        END IF;
+        --
+        BEGIN
+          --
+          -- 4. OBTEM O PRÓXIMO CICLO DENTRO DE UMA COMPETÊNCIA.
+          --
+          V_POSICAO := 40;
+          --
+          SELECT NVL(MAX(CICLO), 0) + 1
+            INTO V_PROXIMO_CICLO
+            FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+           WHERE DT_MES_ANO_COMPETENCIA = P_DT_COMPETENCIA
+             AND COD_INSTITUICAO = P_COD_INSTITUICAO
+             AND NOM_PROCESSO = 'PRO_RETROATIVO_TURMA_ONLINE';
+          --
+        EXCEPTION
+        WHEN OTHERS THEN
+            P_MSG_RETORNO := 'FALHA AO RECUPERAR O PRÓXIMO CICLO DE INTERFACE PAGAMENTO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+        --
+        WHILE C_AP%FOUND
+        LOOP
+          --
+          -- ATUALIZA CONTADORES
+          --
+          V_POSICAO := 50;
+          --
+          IF R_AP.IND_TIPO_CONTRATO IN ('F', 'S') 
+          THEN
+            V_DESTINO         := 1;
+            V_CONT_DESTINO_RH := V_CONT_DESTINO_RH + 1;
+          ELSIF R_AP.IND_TIPO_CONTRATO = 'P' 
+          THEN
+            V_DESTINO          := 2;
+            V_CONT_DESTINO_FIN := V_CONT_DESTINO_FIN + 1;
+          END IF;
+          --
+          -- PROPORCIONAL
+          --
+          V_POSICAO := 60;
+          --
+          --
+          IF TRUNC(R_AP.DT_INICIO_ALOCACAO, 'MM') = TRUNC(R_AP.DT_COMPETENCIA, 'MM') 
+          THEN
+            --
+            V_DIA_INI := TO_NUMBER(TO_CHAR(R_AP.DT_INICIO_ALOCACAO, 'DD'));
+            --
+          ELSE
+            --
+            V_DIA_INI := 01;
+            --
+          END IF; -- IF TRUNC(R_AP.DT_INICIO_ATUACAO,'MM') = TRUNC(P_DT_COMPETENCIA,'MM') THEN
+          --
+          IF TRUNC(R_AP.DT_FIM_ALOCACAO, 'MM') = TRUNC(R_AP.DT_COMPETENCIA, 'MM') 
+          THEN
+            --
+            V_DIA_FIM := TO_NUMBER(TO_CHAR(R_AP.DT_FIM_ALOCACAO, 'DD'));
+            --
+            IF V_DIA_FIM = TO_NUMBER(TO_CHAR(LAST_DAY(R_AP.DT_FIM_ALOCACAO), 'DD')) 
+            THEN
+              --
+              V_DIA_FIM := 30;
+              --
+            END IF;
+            --
+          ELSE
+            --
+            V_DIA_FIM := 30;
+            --
+          END IF; -- IF TRUNC(R_AP.DT_FIM_ATUACAO,'MM') = TRUNC(P_DT_COMPETENCIA,'MM') THEN
+          --
+          V_QTDE_DIAS_TRAB := V_DIA_FIM - V_DIA_INI + 1;
+          --
+          --
+          V_VALOR_MOVIMENTO     := 0;
+          V_QTDE_HORA_MOVIMENTO := 0;
+          -- SRD - 1436-Pagamento de Graduacao EAD.
+          V_QTDE_HORA_MOVIMENTO := ROUND((1 / 30) * V_QTDE_DIAS_TRAB, 2);
+          --
+          SELECT DECODE(R_AP.COD_CURSO_EXTENSAO, NULL, 'N', 'S')
+            INTO V_CURSO_EXTENSAO
+            FROM DUAL;
+          --
+          -- REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+          --
+          -- ATUALIZA A_INTERFACE_PAGAMENTO
+          --
+          V_POSICAO := 70;
+          --
+          -- Alterado através da SRD 1647 para utilizar a Rubrica - Curso a Distância (Código 27) 
+          V_COD_TIPO_RUBRICA := 27;
+          --
+          GRAVA_ARQUIVO( V_COD_TIPO_RUBRICA                     -- PI_COD_TIPO_RUBRICA
+                       , P_DT_COMPETENCIA                       -- PI_DT_COMPETENCIA           (V_DT_COMPETENCIA)
+                       , V_PROXIMO_CICLO                        -- PI_PROXIMO_CICLO
+                       , 'PRO_RETROATIVO_TURMA_ONLINE'          -- 'PRO_2_APURACAO_ALOCACAO'          -- PI_NOM_PROCESSO
+                       , '1'                                    -- PI_IND_SITUACAO_PAGAMENTO   (1=GERADO)
+                       , V_DESTINO                              -- PI_IND_DESTINO
+                       , V_CURSO_EXTENSAO                       -- PI_IND_CURSO_EXTENSAO
+                       , R_AP.COD_PROFESSOR                     -- PI_COD_PROFESSOR
+                       , R_AP.NUM_MATRICULA                     -- PI_NUM_MATRICULA
+                       , R_AP.COD_TIPO_CURSO                    -- PI_COD_TIPO_CURSO
+                       , R_AP.COD_CURSO                         -- PI_COD_CURSO
+                       , NULL                                   -- PI_COD_CURSO_EXTENSAO
+                       , R_AP.COD_CAMPUS                        -- PI_COD_CAMPUS
+                       , R_AP.COD_TURNO                         -- PI_COD_TURNO
+                       , V_QTDE_HORA_MOVIMENTO                  -- PI_QTD_HORAS_MOVIMENTO
+                       , NULL                                   -- PI_VALOR_MOVIMENTO
+                       , SYSDATE                                -- PI_DT_GERACAO
+                       , NULL                                   -- PI_DT_LIBERACAO
+                       , NULL                                   -- PI_DT_PROCESSAMENTO
+                       , NULL                                   -- PI_NUM_SEQ_SOLICITACAO
+                       , R_AP.NUM_SEQ_ALOCACAO                  -- PI_NUM_SEQ_ALOCACAO
+                       , NULL                                   -- PI_NUM_SEQ_ATUACAO
+                       , NULL                                   -- PI_MES_ANO_ATUACAO
+                       , NULL                                   -- PI_NUM_SEQ_FALTA
+                       , R_AP.PERCENTUAL_APRIMORAMENTO          -- PI_PERCENTUAL_APRIMORAMENTO
+                       , R_AP.COD_BANCO                         -- PI_COD_BANCO
+                       , R_AP.COD_AGENCIA                       -- PI_COD_AGENCIA
+                       , R_AP.COD_AGENCIA_DV                    -- PI_COD_AGENCIA_DV
+                       , R_AP.CONTA_CORRENTE                    -- PI_COD_CONTA_CORRENTE
+                       , R_AP.CONTA_CORRENTE_DV                 -- PI_COD_CONTA_CORRENTE_DV
+                       , R_AP.COD_CATEGORIA_PROFESSOR           -- PI_COD_CATEGORIA_PROFESSOR
+                       , R_AP.NUM_SEQ_TURMA                     -- PI_NUM_SEQ_TURMA
+                       , NULL                                   -- PI_COD_TURMA_EXTENSAO
+                       , R_AP.IND_TIPO_CONTRATO                 -- PI_IND_TIPO_CONTRATO
+                       , P_COD_INSTITUICAO                      -- PI_COD_INSTITUICAO
+                       , 'N'                                    -- PI_COMMIT
+                       , P_IND_ERRO                             -- PO_IND_ERRO
+                       , P_MSG_RETORNO                          -- PO_MSG_RETORNO
+                       , NULL                                   -- PI_COD_TIPO_ATUACAO
+                       , V_QTDE_HORA_MOVIMENTO                  -- PI_QTD_HORAS_TRABALHADAS -> REQ. 4893 - CÁLCULO DE HORAS TRABALHADAS
+                       , R_AP.IND_ENSINO_DISTANCIA              -- PI_IND_ENSINO_DISTANCIA
+                       , V_QTDE_DIAS_TRAB                       -- PI_QTD_DIAS_TRABALHADOS
+                       , R_AP.QTD_HORAS_TEORICO);               -- PI_QTD_HORAS_TEORICO
+          --
+          IF P_IND_ERRO <> '0' THEN
+            RAISE ERR_PREVISTO;
+          END IF;
+          --
+          V_QTD_REG_GRAVADOS := V_QTD_REG_GRAVADOS + 1;
+          --
+          IF MOD(V_QTD_REG_GRAVADOS, 1000) = 0 AND
+             P_COMMIT = 'S'
+          THEN
+            COMMIT;
+          END IF;
+          --
+          FETCH C_AP
+            INTO R_AP;
+          --
+        END LOOP;
+        --
+
+        --
+        --**************************************************************************
+        -- ATUALIZA ALOCAÇÃO DE PROFESSOR PARA INDICAÇÃO DE GERAÇÃO DE PAGAMENTO ***
+        --**************************************************************************
+        BEGIN
+          --
+          V_POSICAO := 210;
+          --
+          UPDATE SIA.ALOCACAO_PROFESSOR AP
+             SET AP.DT_GERACAO_PAGAMENTO = SYSDATE
+           WHERE AP.DT_GERACAO_PAGAMENTO IS NULL
+             AND EXISTS (SELECT 1
+                    FROM SIA.A_INTERFACE_PAGAMENTO IP
+                   WHERE TRUNC(IP.DT_MES_ANO_COMPETENCIA, 'MM') = TRUNC(P_DT_COMPETENCIA, 'MM')
+                     AND IP.NUM_SEQ_ALOCACAO = AP.NUM_SEQ_ALOCACAO
+                     AND IP.COD_PROFESSOR    = AP.COD_PROFESSOR
+                     AND IP.COD_INSTITUICAO  = P_COD_INSTITUICAO
+                     AND IP.NOM_PROCESSO     = 'PRO_RETROATIVO_TURMA_ONLINE');
+          --
+        EXCEPTION
+        WHEN OTHERS THEN
+            P_MSG_RETORNO := 'ERRO AO ATUALIZAR INDICAÇÃO DE PAGAMENTO NA ALOCAÇÃO.';
+            V_ERRO_ORACLE := SQLERRM;
+            RAISE ERR_NAO_PREVISTO;
+        END;
+
+        --
+        P_MSG_RETORNO := 'QTDE DE REGISTROS ENVIADOS AO RH: ' || V_CONT_DESTINO_RH || CHR(13) || 'QTDE DE REGISTROS ENVIADOS AO FIN: ' || V_CONT_DESTINO_FIN || CHR(13) || 'QTDE DE REGISTROS NÃO PERTENCENTES AOS TIPOS DE CURSO GRADUACAO E POLITECNICO: ' || V_QTDE_OUTROS_TP_CURSOS;
+        --
+
+        --
+        IF ( NVL(V_CONT_DESTINO_RH,0) + NVL(V_CONT_DESTINO_FIN,0) ) > 0 THEN
+           --
+            BEGIN
+              --
+              -- INCLUI O SISTÉTICO DO PROCESSO
+              --
+              BEGIN
+                V_COD_INSTITUICAO_FILTRO := TO_NUMBER(P_COD_INSTITUICAO);
+              EXCEPTION
+                WHEN OTHERS THEN
+                  V_COD_INSTITUICAO_FILTRO := NULL;
+              END;
+              --
+              V_POSICAO := 200;
+              --
+              INSERT INTO SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+                (DT_MES_ANO_COMPETENCIA
+                ,NOM_PROCESSO
+                ,IND_TIPO_PROCESSO
+                 --                      , COD_PROFESSOR
+                ,NUM_SEQ_DADOS_PROFESSOR
+                ,COD_CAMPUS
+                ,COD_TIPO_CURSO
+                ,QTD_GRAVADOS_IP
+                ,DT_INICIO_GERACAO
+                ,DT_FIM_GERACAO
+                ,IND_RETORNO
+                ,TXT_MSG_PROCESSO
+                ,TOTAL_REGS_RUBRICA_1
+                ,TOTAL_REGS_RUBRICA_2
+                ,TOTAL_HORAS_RUBRICA_1
+                ,TOTAL_HORAS_RUBRICA_2
+                ,QTD_REGS_DESTINO_1
+                ,QTD_REGS_DESTINO_2
+                ,CICLO
+                ,IND_TIPO_CONTRATO
+                ,COD_USUARIO_LOG
+                ,DT_INICIO_SELECAO
+                ,DT_FIM_SELECAO
+                ,COD_INSTITUICAO)
+              VALUES
+                (P_DT_COMPETENCIA
+                ,'PRO_RETROATIVO_TURMA_ONLINE'
+                ,P_IND_TIPO_PROCESSO
+                 --                      , P_COD_PROFESSOR
+                ,P_NUM_SEQ_DADOS_PROFESSOR
+                ,P_COD_CAMPUS
+                ,P_COD_TIPO_CURSO
+                ,V_CONT_GRAVADOS_IP
+                ,SYSDATE
+                ,SYSDATE
+                ,P_IND_ERRO
+                ,P_MSG_RETORNO
+                ,NULL --V_CONT_RUBRICA_CARGA_HR,
+                ,NULL --V_CONT_RUBRICA_AD_NOT,
+                ,NULL --V_QTD_CARGA_MENSAL_HR,
+                ,NULL --V_QTD_CARGA_MENSAL_AD_NOT,
+                ,V_CONT_DESTINO_RH
+                ,V_CONT_DESTINO_FIN
+                ,V_PROXIMO_CICLO
+                ,P_IND_TIPO_CONTRATO
+                ,P_COD_USUARIO
+                ,TRUNC(ADD_MONTHS(P_DT_COMPETENCIA,-2),'MM')
+                ,LAST_DAY(ADD_MONTHS(P_DT_COMPETENCIA,-1))
+                ,V_COD_INSTITUICAO_FILTRO);
+            EXCEPTION
+            WHEN OTHERS THEN
+                V_ERRO_ORACLE := SQLERRM;
+                P_MSG_RETORNO := 'HOUVE UMA FALHA AO INCLUIR NA TABELA "CONTROLE_PAGAMENTO_PROFESSOR".';
+                RAISE ERR_NAO_PREVISTO;
+            END;
+            --
+        END IF;
+
+        V_POSICAO := 300;
+        --
+        IF P_COMMIT = 'S' THEN
+          COMMIT;
+        END IF;
+        --
+        P_IND_ERRO    := '0';
+        P_MSG_RETORNO := '';
+        --
+      EXCEPTION
+        --
+        WHEN ERR_ADVERTENCIA THEN
+          P_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          P_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          P_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          P_MSG_RETORNO := SQLERRM;
+          V_ERRO_ORACLE := SQLERRM;
+          P_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+          --
+      END;
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF P_COMMIT = 'S' THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF P_IND_ERRO = '2' THEN
+          SEG.SEG_LOG_EXECUCAO('PRO_RETROATIVO_TURMA_ONLINE, IE: ' || R_AP.COD_INSTITUICAO, V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, P_MSG_RETORNO);
+        END IF;
+        --
+    END;
+    --
+    IF C_AP%ISOPEN
+    THEN
+      CLOSE C_AP;
+    END IF;
+    --
+  END PRO_RETROATIVO_TURMA_ONLINE;
+  --
+
+
+  --
+  PROCEDURE PRO_PAGAMENTO_PROFESSOR(PI_DT_COMPETENCIA    IN SIA.A_INTERFACE_PAGAMENTO.DT_MES_ANO_COMPETENCIA%TYPE
+                                   ,PI_COD_PROFESSOR     IN SIA.A_INTERFACE_PAGAMENTO.COD_PROFESSOR%TYPE
+                                   ,PI_COD_TIPO_CURSO    IN SIA.A_INTERFACE_PAGAMENTO.COD_TIPO_CURSO%TYPE
+                                   ,PI_COD_CAMPUS        IN SIA.A_INTERFACE_PAGAMENTO.COD_CAMPUS%TYPE
+                                   ,PI_IND_TIPO_PROCESSO IN VARCHAR2
+                                   ,PI_IND_TIPO_CONTRATO IN VARCHAR2
+                                   ,PI_IND_TIPO_APURACAO IN VARCHAR2
+                                   ,PI_COD_USUARIO       IN VARCHAR2
+                                   ,PI_COD_INSTITUICAO   IN VARCHAR2
+                                   ,PI_COMMIT            IN VARCHAR2
+                                   ,PO_IND_ERRO          OUT VARCHAR2
+                                   ,PO_MSG_RETORNO       OUT VARCHAR2) IS
+    --
+    ERR_PREVISTO EXCEPTION;
+    V_POSICAO           PLS_INTEGER;
+    V_SQLERRM           VARCHAR2(4000);
+    V_MSG_RETORNO       VARCHAR2(4000);
+--    V_DT_INI_SELECAO    DATE;
+--    V_DT_FIM_SELECAO    DATE;
+    V_AUX               PLS_INTEGER;
+
+    TYPE TCHAR IS TABLE OF VARCHAR2(1) INDEX BY BINARY_INTEGER;
+    --
+    V_IND_PAGAMENTO            TCHAR;
+    --
+    PI_NUM_SEQ_DADOS_PROFESSOR SIA.DADOS_PROFESSOR.NUM_SEQ_DADOS_PROFESSOR%TYPE;
+    --
+  BEGIN
+    --
+    V_MSG_RETORNO := '';
+    --
+    V_POSICAO := 1;
+    --
+    IF PI_COD_PROFESSOR IS NOT NULL
+    THEN
+      BEGIN
+        SELECT NUM_SEQ_DADOS_PROFESSOR
+          INTO PI_NUM_SEQ_DADOS_PROFESSOR
+          FROM SIA.PROFESSOR
+         WHERE COD_PROFESSOR = PI_COD_PROFESSOR;
+      EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+          RAISE ERR_PREVISTO;
+      END;
+    END IF;
+
+    -- ALTERADO DIA 05/08/2008.
+    --
+    -- VERIFCA SE EXISTEM LINHAS DE COMPETÊNCIA DO MÊS ANTERIOR NAS TABELAS INTERMEDIÁRIAS E NAS
+    -- TABELAS INTERFACE.RATEIO_ALUNO E INTERFACE.SAP_LANCTO_PROFESSOR, E SE EXISTIR HISTORIA OS
+    -- DADOS DO MÊS ANTERIOR DAS INTERMEDIÁRIAS E APAGA AS LINHAS DESTAS TABELAS.
+    --
+    V_AUX := 0;
+
+    SELECT COUNT(*)
+      INTO V_AUX
+      FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR ACPP
+         , INTERFACE.SAP_LANCTO_PROFESSOR SLP
+     WHERE ACPP.DT_MES_ANO_COMPETENCIA = SLP.DT_MES_ANO_COMPETENCIA
+       AND TRUNC(ACPP.DT_MES_ANO_COMPETENCIA, 'MM') <> TRUNC(PI_DT_COMPETENCIA, 'MM');
+    --
+    --
+    IF V_AUX > 0 THEN
+      BEGIN
+        V_POSICAO := 10;
+        --
+        -- 4 - JOGAR OS VALORES DA COMPETENCIA ANTERIOR PARA A TABELA DE HISTORICO INTERFACE.HIST_RATEIO_ALUNO
+        --
+        INSERT INTO INTERFACE.HIST_RATEIO_ALUNO
+          (NUM_SEQ_RATEIO_ALUNO
+          ,DT_MES_ANO_COMPETENCIA
+          ,CICLO
+          ,NUM_SEQ_TURMA
+          ,COD_TURNO
+          ,COD_TURMA_EXTENSAO
+          ,COD_CURSO
+          ,COD_CURSO_EXTENSAO
+          ,COD_CAMPUS
+          ,COD_TIPO_CURSO
+          ,QTD_ALUNO_RATEIO
+          ,COD_CENTRO_RESULTADO_RATEIO
+          ,COD_ORDEM_INTERNA
+          ,NUM_MATRICULA
+          ,COD_USUARIO_LOG
+          ,DT_ATUALIZA_LOG
+          ,TXT_IP_LOG
+          ,COD_INSTITUICAO)
+          SELECT RA.NUM_SEQ_RATEIO_ALUNO
+                ,RA.DT_MES_ANO_COMPETENCIA
+                ,RA.CICLO
+                ,RA.NUM_SEQ_TURMA
+                ,RA.COD_TURNO
+                ,RA.COD_TURMA_EXTENSAO
+                ,RA.COD_CURSO
+                ,RA.COD_CURSO_EXTENSAO
+                ,RA.COD_CAMPUS
+                ,RA.COD_TIPO_CURSO
+                ,RA.QTD_ALUNO_RATEIO
+                ,RA.COD_CENTRO_RESULTADO_RATEIO
+                ,RA.COD_ORDEM_INTERNA
+                ,RA.NUM_MATRICULA
+                ,RA.COD_USUARIO_LOG
+                ,RA.DT_ATUALIZA_LOG
+                ,RA.TXT_IP_LOG
+                ,RA.COD_INSTITUICAO
+            FROM INTERFACE.RATEIO_ALUNO RA;
+
+        V_POSICAO := 20;
+        --
+        -- DELETA TODAS AS LINHAS DAS TABELAS
+        --
+        INTERFACE.SP_DELETA_RATEIO_ALUNO(); -- DELETA TODAS AS LINHAS DA TABELA INTERFACE.RATEIO_ALUNO
+        --
+        --
+        -- VERIFCA SE EXISTEM LINHAS DE COMPETÊNCIA DO MÊS ANTERIOR NA INTERFACE.SAP_LANCTO_PROFESSOR
+        -- E SE EXISTIR HISTORIA OS DADOS DO MÊS ANTERIOR E APAGA AS LINHAS.
+        --
+        V_POSICAO := 30;
+        --
+        -- 7 - JOGAR OS VALORES DA COMPETENCIA ANTERIOR PARA A TABELA DE HISTORICO INTERFACE.SAP_LANCTO_PROFESSOR_HIST
+        --
+        INSERT INTO INTERFACE.SAP_LANCTO_PROFESSOR_HIST
+          (NUM_SEQ_LANCTO_PROFESSOR
+          ,DT_MES_ANO_COMPETENCIA
+          ,NUM_MATRICULA
+          ,COD_VERBA_RH
+          ,COD_CAMPUS
+          ,COD_TIPO_CURSO
+          ,COD_CURSO
+          ,COD_CURSO_EXTENSAO
+          ,COD_TURNO
+          ,QTD_HORAS_LANCTO
+          ,COD_CENTRO_RESULTADO
+          ,VAL_LANCTO
+          ,QTD_HORAS_TRABALHADAS
+          ,NUM_SEQ_TURMA
+          ,COD_USUARIO_LOG
+          ,DT_ATUALIZA_LOG
+          ,TXT_IP_LOG
+          ,COD_EMPRESA
+          ,IND_TIPO_CONTRATO
+          ,COD_MUNICIPIO_PAGAMENTO
+          ,COD_INSTITUICAO
+          ,NUM_SEQ_ALOCACAO
+          ,QTD_DIAS_TRABALHADOS)
+          SELECT NUM_SEQ_LANCTO_PROFESSOR
+                ,DT_MES_ANO_COMPETENCIA
+                ,NUM_MATRICULA
+                ,COD_VERBA_RH
+                ,COD_CAMPUS
+                ,COD_TIPO_CURSO
+                ,COD_CURSO
+                ,COD_CURSO_EXTENSAO
+                ,COD_TURNO
+                ,QTD_HORAS_LANCTO
+                ,COD_CENTRO_RESULTADO
+                ,VAL_LANCTO
+                ,QTD_HORAS_TRABALHADAS
+                ,NUM_SEQ_TURMA
+                ,COD_USUARIO_LOG
+                ,DT_ATUALIZA_LOG
+                ,TXT_IP_LOG
+                ,COD_EMPRESA
+                ,IND_TIPO_CONTRATO
+                ,COD_MUNICIPIO_PAGAMENTO
+                ,COD_INSTITUICAO
+                ,NUM_SEQ_ALOCACAO
+                ,QTD_DIAS_TRABALHADOS
+            FROM INTERFACE.SAP_LANCTO_PROFESSOR;
+            -- ALTERADO DIA 05/08/2008.
+            -- 8 - APAGAR OS VALORES DA TABELA INTERFACE.SAP_LANCTO_PROFESSOR
+            --
+            V_POSICAO := 40;
+            --
+            -- DELETA TODAS AS LINHAS DAS TABELAS
+            --
+            INTERFACE.SP_DELETA_LANCTO_PROFESSOR(); -- DELETA TODAS AS LINHAS DA TABELA INTERFACE.SAP_LANCTO_PROFESSOR
+            --
+        EXCEPTION
+        WHEN OTHERS THEN
+            PO_MSG_RETORNO := SQLERRM;
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- 11. DELETA AS TABELAS INTERMEDIÁRIAS
+        --
+        V_POSICAO := 50;
+        --
+        BEGIN
+
+            EXECUTE IMMEDIATE 'TRUNCATE TABLE SIA.A_CONTROLE_PAGAMENTO_PROFESSOR';
+            EXECUTE IMMEDIATE 'TRUNCATE TABLE SIA.A_INTERFACE_PAGAMENTO';
+            EXECUTE IMMEDIATE 'TRUNCATE TABLE SIA.A_RATEIO_ALUNO';
+
+        EXCEPTION
+        WHEN OTHERS THEN
+            RAISE ERR_PREVISTO;
+        END;
+
+    END IF;
+
+    IF PI_COMMIT = 'S' THEN
+      COMMIT;
+    END IF;
+    --
+    -- REGISTRA INÍCIO DO PROCESSO DE PAGAMENTO DE PROFESSOR
+    --
+    V_POSICAO := 55;
+      --
+    IF PI_IND_TIPO_APURACAO IN ('T') THEN
+      --
+      BEGIN
+
+        INSERT INTO SIA.GERACAO_PAGAMENTO_PROFESSOR
+            (DT_MES_ANO_COMPETENCIA
+            ,COD_INSTITUICAO
+            ,DT_INICIO_PROCESSO)
+          VALUES
+            (PI_DT_COMPETENCIA
+            ,PI_COD_INSTITUICAO
+            ,SYSDATE);
+
+      EXCEPTION
+      WHEN OTHERS THEN
+          PO_MSG_RETORNO := SQLERRM;
+          RAISE ERR_PREVISTO;
+      END;
+      --
+    END IF;
+
+    IF PI_COMMIT = 'S' THEN
+      COMMIT;
+    END IF;
+
+    FOR R IN (SELECT COLUMN_VALUE COD_INSTITUICAO
+                FROM TABLE(SIA.SPLIT_NUMBER(PI_COD_INSTITUICAO, ',')))
+    LOOP
+
+    --
+    -- SELECIONA OS MOTIVOS DE PAGAMENTO PARA A INSTITUICAO DE ENSINO
+    --
+    V_POSICAO := 57;
+    --
+    FOR I IN 1..17 LOOP
+        --
+        BEGIN
+          SELECT 'S'
+            INTO V_IND_PAGAMENTO(I)
+            FROM SIA.MOTIVO_PAGAMENTO_INSTITUICAO
+           WHERE COD_INTERFACE = I
+             AND COD_INSTITUICAO = R.COD_INSTITUICAO;
+
+        EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+           V_IND_PAGAMENTO(I) := 'N';
+        WHEN OTHERS THEN
+           PO_MSG_RETORNO := SQLERRM;
+           RAISE ERR_PREVISTO;
+        END;
+        --
+    END LOOP;
+
+      --
+      -- FALTA / ABONO / REPOSIÇÃO / AULA EXTRA
+      --
+      V_POSICAO := 60;
+      --
+--      IF PI_IND_TIPO_APURACAO IN ('F', 'T')
+      IF V_IND_PAGAMENTO(2) = 'S' THEN
+        --
+        PRO_APURACAO_FALTA(PI_DT_COMPETENCIA, PI_NUM_SEQ_DADOS_PROFESSOR, PI_COD_TIPO_CURSO, PI_COD_CAMPUS, PI_IND_TIPO_PROCESSO, PI_IND_TIPO_CONTRATO, PI_COD_USUARIO, PI_COMMIT, PO_IND_ERRO, PO_MSG_RETORNO, R.COD_INSTITUICAO);
+        --
+        IF PO_IND_ERRO <> '0'
+        THEN
+          IF PO_IND_ERRO = '3'
+          THEN
+            V_MSG_RETORNO := V_MSG_RETORNO || '<br>' || PO_MSG_RETORNO;
+          ELSE
+            RAISE ERR_PREVISTO;
+          END IF;
+        END IF;
+        --
+      END IF;
+      --
+      -- ATUAÇÃO VARIÁVEL (POR CAMPUS)
+      --
+      V_POSICAO := 70;
+      --
+--      IF PI_IND_TIPO_APURACAO IN ('V', 'T')
+      IF V_IND_PAGAMENTO(3) = 'S' THEN
+        --
+        PRO_APURACAO_ATUACAO_VARIAVEL(PI_DT_COMPETENCIA, PI_NUM_SEQ_DADOS_PROFESSOR, PI_COD_TIPO_CURSO, PI_COD_CAMPUS, PI_IND_TIPO_PROCESSO, PI_IND_TIPO_CONTRATO, PI_COD_USUARIO, PI_COMMIT, PO_IND_ERRO, PO_MSG_RETORNO, R.COD_INSTITUICAO);
+        --
+        IF PO_IND_ERRO <> '0'
+        THEN
+          IF PO_IND_ERRO = '3'
+          THEN
+            V_MSG_RETORNO := V_MSG_RETORNO || '<br>' || PO_MSG_RETORNO;
+          ELSE
+            RAISE ERR_PREVISTO;
+          END IF;
+        END IF;
+        --
+      END IF;
+      --
+      -- ATUAÇÃO FIXA
+      --
+      V_POSICAO := 80;
+      IF V_IND_PAGAMENTO(4) = 'S' THEN
+        --
+        PRO_APURACAO_ATUACAO_FIXA(PI_DT_COMPETENCIA, PI_NUM_SEQ_DADOS_PROFESSOR, PI_COD_TIPO_CURSO, PI_COD_CAMPUS, PI_IND_TIPO_PROCESSO, PI_IND_TIPO_CONTRATO, PI_COD_USUARIO, PI_COMMIT, PO_IND_ERRO, PO_MSG_RETORNO, R.COD_INSTITUICAO);
+        --
+        IF PO_IND_ERRO <> '0'
+        THEN
+          IF PO_IND_ERRO = '3'
+          THEN
+            V_MSG_RETORNO := V_MSG_RETORNO || '<br>' || PO_MSG_RETORNO;
+          ELSE
+            RAISE ERR_PREVISTO;
+          END IF;
+        END IF;
+        --
+      END IF;
+      --
+      -- ESPECIALIZAÇÃO
+      --
+      V_POSICAO := 90;
+      IF V_IND_PAGAMENTO(5) = 'S' THEN
+        --
+        -- ALTERADO PARA -2 PARA ATÉ 2 MESES RETROATIVOS
+        PRO_APURACAO_ESPECIALIZACAO(PI_DT_COMPETENCIA
+                                  , PI_NUM_SEQ_DADOS_PROFESSOR
+                                  , PI_COD_TIPO_CURSO
+                                  , PI_COD_CAMPUS
+                                  , PI_IND_TIPO_PROCESSO
+                                  , PI_IND_TIPO_CONTRATO
+                                  , PI_COD_USUARIO
+                                  , PI_COMMIT
+                                  , PO_IND_ERRO
+                                  , PO_MSG_RETORNO
+                                  , R.COD_INSTITUICAO);
+        --
+        IF PO_IND_ERRO <> '0' THEN
+          IF PO_IND_ERRO = '3' THEN
+            V_MSG_RETORNO := V_MSG_RETORNO || '<br>' || PO_MSG_RETORNO;
+          ELSE
+            RAISE ERR_PREVISTO;
+          END IF;
+        END IF;
+        --
+      END IF; -- IF PI_IND_TIPO_APURACAO IN ('E','T') THEN
+      --
+      -- TURMA ONLINE
+  
+      V_POSICAO := 95;
+      IF V_IND_PAGAMENTO(17) = 'S' THEN
+        --
+        PRO_RETROATIVO_TURMA_ONLINE(PI_DT_COMPETENCIA
+                                  , PI_NUM_SEQ_DADOS_PROFESSOR
+                                  , PI_COD_TIPO_CURSO
+                                  , PI_COD_CAMPUS
+                                  , PI_IND_TIPO_PROCESSO
+                                  , PI_IND_TIPO_CONTRATO
+                                  , PI_COD_USUARIO
+                                  , PI_COMMIT
+                                  , PO_IND_ERRO
+                                  , PO_MSG_RETORNO
+                                  , R.COD_INSTITUICAO);
+        --
+        IF PO_IND_ERRO <> '0' THEN
+          IF PO_IND_ERRO = '3' THEN
+            V_MSG_RETORNO := V_MSG_RETORNO || '<br>' || PO_MSG_RETORNO;
+          ELSE
+            RAISE ERR_PREVISTO;
+          END IF;
+        END IF;
+        --
+      END IF;
+      --
+      V_POSICAO := 100;
+      --
+--      IF PI_IND_TIPO_APURACAO IN ('I', 'T')
+      IF V_IND_PAGAMENTO(6) = 'S' THEN
+        --
+        PRO_APURACAO_TURMA_ONLINE(PI_DT_COMPETENCIA
+                                , PI_NUM_SEQ_DADOS_PROFESSOR
+                                , PI_COD_TIPO_CURSO
+                                , PI_COD_CAMPUS
+                                , PI_IND_TIPO_PROCESSO
+                                , PI_IND_TIPO_CONTRATO
+                                , PI_COD_USUARIO
+                                , PI_COMMIT
+                                , PO_IND_ERRO
+                                , PO_MSG_RETORNO
+                                , R.COD_INSTITUICAO);
+        --
+        IF PO_IND_ERRO <> '0' THEN
+          IF PO_IND_ERRO = '3' THEN
+            V_MSG_RETORNO := V_MSG_RETORNO || '<br>' || PO_MSG_RETORNO;
+          ELSE
+            RAISE ERR_PREVISTO;
+          END IF;
+        END IF;
+        --
+      END IF;
+      --
+      V_POSICAO := 105;
+      IF V_IND_PAGAMENTO(15) = 'S' THEN
+        --
+        PRO_APURACAO_EXTENSAO(PI_DT_COMPETENCIA
+                            , PI_NUM_SEQ_DADOS_PROFESSOR
+                            , PI_COD_TIPO_CURSO
+                            , PI_COD_CAMPUS
+                            , PI_IND_TIPO_PROCESSO
+                            , PI_IND_TIPO_CONTRATO
+                            , PI_COD_USUARIO
+                            , PI_COMMIT
+                            , PO_IND_ERRO
+                            , PO_MSG_RETORNO
+                            , R.COD_INSTITUICAO);
+        --
+        IF PO_IND_ERRO <> '0' THEN
+          IF PO_IND_ERRO = '3' THEN
+            V_MSG_RETORNO := PO_MSG_RETORNO;
+          ELSE
+            RAISE ERR_PREVISTO;
+          END IF;
+        END IF;
+        --
+      END IF;
+
+
+      V_POSICAO := 110;
+      --
+      -- CARGA HORÁRIA / AD. NOTURNO
+      IF V_IND_PAGAMENTO(16) = 'S' THEN
+        --
+        PRO_RETROATIVO_ALOCACAO(PI_DT_COMPETENCIA
+                              , PI_NUM_SEQ_DADOS_PROFESSOR
+                              , PI_COD_TIPO_CURSO
+                              , PI_COD_CAMPUS
+                              , PI_IND_TIPO_PROCESSO
+                              , PI_IND_TIPO_CONTRATO
+                              , PI_COD_USUARIO
+                              , PI_COMMIT
+                              , PO_IND_ERRO
+                              , PO_MSG_RETORNO
+                              , R.COD_INSTITUICAO);
+        --
+        IF PO_IND_ERRO <> '0' THEN
+          IF PO_IND_ERRO = '3' THEN
+            V_MSG_RETORNO := PO_MSG_RETORNO;
+          ELSE
+            RAISE ERR_PREVISTO;
+          END IF;
+        END IF;
+        --
+      END IF;
+
+      --
+      V_POSICAO := 115;
+      IF V_IND_PAGAMENTO(1) = 'S' THEN
+        --
+        PRO_APURACAO_ALOCACAO(PI_DT_COMPETENCIA, PI_NUM_SEQ_DADOS_PROFESSOR, PI_COD_TIPO_CURSO, PI_COD_CAMPUS, PI_IND_TIPO_PROCESSO, PI_IND_TIPO_CONTRATO, PI_COD_USUARIO, PI_COMMIT, PO_IND_ERRO, PO_MSG_RETORNO, R.COD_INSTITUICAO);
+        --
+        IF PO_IND_ERRO <> '0' THEN
+          IF PO_IND_ERRO = '3' THEN
+            V_MSG_RETORNO := PO_MSG_RETORNO;
+          ELSE
+            RAISE ERR_PREVISTO;
+          END IF;
+        END IF;
+        --
+      END IF;
+
+      --
+      IF PI_COMMIT = 'S' THEN
+        COMMIT;
+      END IF;
+      --
+
+    END LOOP;
+
+    --
+    -- REGISTRA FIM DO PROCESSO DE PAGAMENTO DE PROFESSOR
+    --
+    V_POSICAO := 120;
+    --
+    IF PI_IND_TIPO_APURACAO IN ('T') THEN
+      --
+      BEGIN
+        UPDATE SIA.GERACAO_PAGAMENTO_PROFESSOR
+          SET DT_FIM_PROCESSO = SYSDATE
+             ,CICLO = (SELECT NVL(MAX(CICLO), 0)
+                         FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+                        WHERE DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+                          AND COD_INSTITUICAO = PI_COD_INSTITUICAO)
+         WHERE DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+           AND COD_INSTITUICAO = PI_COD_INSTITUICAO
+           AND CICLO IS NULL;
+
+      EXCEPTION
+        WHEN OTHERS THEN
+          PO_MSG_RETORNO := SQLERRM;
+          RAISE ERR_PREVISTO;
+      END;
+
+    END IF;
+
+    IF PI_COMMIT = 'S' THEN
+      COMMIT;
+    END IF;
+
+    PO_IND_ERRO    := '0';
+    PO_MSG_RETORNO := V_MSG_RETORNO;
+
+    --
+  EXCEPTION
+  WHEN ERR_PREVISTO THEN
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-1' THEN
+          PO_MSG_RETORNO := 'ERRO AO BUSCAR IDENTIFICAÇÃO DO PROFESSOR.';
+        WHEN '-10' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DADOS EM INTERFACE.HIST_RATEIO_ALUNO : ' || PO_MSG_RETORNO;
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO AO APAGAR DADOS EM INTERFACE.RATEIO_ALUNO : ' || PO_MSG_RETORNO;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DADOS EM INTERFACE.SAP_LANCTO_PROFESSOR_HIST : ' || PO_MSG_RETORNO;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO APAGAR DADOS EM INTERFACE.SAP_LANCTO_PROFESSOR : ' || PO_MSG_RETORNO;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO LIMPAR AS TABELAS INTERMEDIÁRIAS : ' || PO_MSG_RETORNO;
+        WHEN '-55' THEN
+          PO_MSG_RETORNO := 'ERRO AO REGISTRAR O INÍCIO DA GERAÇÃO DE CONTROLE DO PAGAMENTO : ' || PO_MSG_RETORNO;
+        WHEN '-57' THEN
+          PO_MSG_RETORNO := 'ERRO AO SELECIONAR OS MOTIVOS DE PAGAMENTO PARA A INSTITUICAO DE ENSINO : ' || PO_MSG_RETORNO;
+        WHEN '-60' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE FALTA / ABONO / REPOSIÇÃO / AULA EXTRA : ' || PO_MSG_RETORNO;
+        WHEN '-70' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE ATUAÇÃO VARIÁVEL (POR CAMPUS) : ' || PO_MSG_RETORNO;
+        WHEN '-80' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE ATUAÇÃO FIXA : ' || PO_MSG_RETORNO;
+        WHEN '-90' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE ESPECIALIZAÇÃO : ' || PO_MSG_RETORNO;
+        WHEN '-95' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE TURMA ONLINE RETROATIVO : ' || PO_MSG_RETORNO;
+        WHEN '-100' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE TURMA ONLINE  : ' || PO_MSG_RETORNO;
+        WHEN '-105' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE TURMA DE EXTENSÃO  : ' || PO_MSG_RETORNO;
+        WHEN '-110' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE CARGA HORÁRIA / AD. NOTURNO RETROATIVA: ' || PO_MSG_RETORNO;
+        WHEN '-115' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE CARGA HORÁRIA / AD. NOTURNO : ' || PO_MSG_RETORNO;
+        WHEN '-120' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR O FIM DA GERAÇÃO DE CONTROLE DO PAGAMENTO : ' || PO_MSG_RETORNO;
+        ELSE
+          PO_MSG_RETORNO := PO_MSG_RETORNO || ' - ERRO NÃO LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_PAGAMENTO_PROFESSOR IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, NULL, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+    WHEN OTHERS THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-1' THEN
+          PO_MSG_RETORNO := 'ERRO AO BUSCAR IDENTIFICAÇÃO DO PROFESSOR : ' || V_SQLERRM;
+        WHEN '-10' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE CARGA HORÁRIA / AD. NOTURNO : ' || V_SQLERRM;
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE FALTA / ABONO / REPOSIÇÃO / AULA EXTRA : ' || V_SQLERRM;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE ATUAÇÃO VARIÁVEL (POR CAMPUS)  : ' || V_SQLERRM;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE ATUAÇÃO FIXA  : ' || V_SQLERRM;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE ESPECIALIZAÇÃO  : ' || V_SQLERRM;
+        WHEN '-55' THEN
+          PO_MSG_RETORNO := 'ERRO AO REGISTRAR O INÍCIO DA GERAÇÃO DE CONTROLE DO PAGAMENTO : ' || V_SQLERRM;
+        WHEN '-60' THEN
+          PO_MSG_RETORNO := 'ERRO NA EXECUÇÃO DO PAGAMENTO DE TURMA ONLINE  : ' || V_SQLERRM;
+        WHEN '-120' THEN
+          PO_MSG_RETORNO := 'ERRO AO REGISTRAR O FIM DA GERAÇÃO DE CONTROLE DO PAGAMENTO : ' || V_SQLERRM;
+        ELSE
+          PO_MSG_RETORNO := PO_MSG_RETORNO || ' - ERRO NÃO LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_PAGAMENTO_PROFESSOR IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, NULL, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+  END PRO_PAGAMENTO_PROFESSOR;
+  --
+  -- INDICA EXPORTAÇÃO DE PAGAMENTO DO MÊS DE COMPETÊNCIA E NOME DO PROCESSO SELECIONADO PELO USUÁRIO.
+  --
+  PROCEDURE PRO_CICLOS_EXPORT_RH(PI_DT_COMPETENCIA  IN DATE
+                                ,PI_TAB_CICLO       IN VARCHAR2
+                                ,PI_QTD_LINHAS      IN PLS_INTEGER
+                                ,PI_COMMIT          IN VARCHAR2
+                                ,PO_IND_ERRO        OUT VARCHAR2
+                                ,PO_MSG_RETORNO     OUT VARCHAR2
+                                ,PI_COD_INSTITUICAO IN NUMBER) IS
+    --
+    -- P_IND_TIPO_CONTRATO  (F) FUNCIONÁRIO
+    --                      (S) PRESTADOR
+    --                      (P) PESSOA JURÍDICA
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    ERR_PREVISTO EXCEPTION;
+    V_SQLERRM        VARCHAR2(500);
+    V_TXT_PARAMETROS VARCHAR2(500);
+    V_POSICAO        PLS_INTEGER;
+    V_QTD_REG_LIDOS  PLS_INTEGER;
+    V_INDICE         PLS_INTEGER;
+    --
+    V_COD_VERBA_RH         VARCHAR2(30);
+    V_COD_CENTRO_RESULTADO VARCHAR2(15);
+    --V_COD_TIPO_CENTRO_RESULTADO VARCHAR2(1);
+    --
+    V_SEP_LIN CHAR(1) := ',';
+    V_SEP_COL CHAR(1) := '|';
+    --
+    M_TAB_CICLO        T_NUMBER := T_NUMBER();
+    M_TAB_NOM_PROCESSO T_VARCHAR := T_VARCHAR();
+    --
+  BEGIN
+    --
+    V_TXT_PARAMETROS := ' PI_DT_COMPETENCIA   : ' || TO_CHAR(PI_DT_COMPETENCIA, 'DD/MM/YYYY') || CHR(13) || ' PI_CICLO            : ' || PI_TAB_CICLO || CHR(13) || ' PI_QTD_LINHAS       : ' || PI_QTD_LINHAS;
+    --
+    V_QTD_REG_LIDOS := 0;
+    --
+    -- 1. VERIFICA PARAMETROS OBRIGATÓRIOS
+    --
+    V_POSICAO := 10;
+    --
+    IF PI_DT_COMPETENCIA IS NULL
+    THEN
+      PO_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+      RAISE ERR_PREVISTO;
+    END IF;
+    --
+    IF PI_TAB_CICLO IS NULL
+    THEN
+      PO_MSG_RETORNO := 'O CICLO DO PROCESSO DEVE SER INFORMADO.';
+      RAISE ERR_PREVISTO;
+    END IF;
+    --
+    IF PI_QTD_LINHAS IS NULL
+    THEN
+      PO_MSG_RETORNO := 'QUANTIDADE DE LINHAS DEVE SER INFORMADA.';
+      RAISE ERR_PREVISTO;
+    END IF;
+    --
+    IF PI_COD_INSTITUICAO IS NULL
+    THEN
+      PO_MSG_RETORNO := 'CÓDIGO DA INSTITUIÇÃO DEVE SER INFORMADA.';
+      RAISE ERR_PREVISTO;
+    END IF;
+    --
+    GERAR_TAB(PI_QTD_LINHAS, PI_TAB_CICLO || ',', M_TAB_CICLO, M_TAB_NOM_PROCESSO, V_SEP_LIN, V_SEP_COL);
+    --
+    V_POSICAO := 20;
+    --
+    -- 2. LIMPA A DATA DE LIBERAÇÃO PARA TODOS OS PROCESSOS DESTA COMPETÊNCIA.
+    --    O PROCESSO SEMPRE RECEBE PELO MENOS 1 CICLO DE CADA NOM_PROCESSO.
+    --
+    UPDATE SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+       SET DT_EXPORTACAO_OK = NULL
+     WHERE DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+       AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+    --
+    -- 2.5. LISTA TODOS OS REGISTROS SEM VERBA DO RH E CENTRO RESULTADO
+    --
+    V_POSICAO := 25;
+    --
+    FOR V_INDICE IN 1 .. M_TAB_CICLO.COUNT
+    LOOP
+      --
+      IF M_TAB_CICLO(V_INDICE) IS NOT NULL AND
+         M_TAB_NOM_PROCESSO(V_INDICE) IS NOT NULL
+      THEN
+        --
+        FOR R_IP IN (SELECT AIP.DT_MES_ANO_COMPETENCIA
+                           ,AIP.NUM_SEQ_MOVIMENTO
+                           ,AIP.COD_TIPO_RUBRICA
+                           ,AIP.COD_CURSO
+                           ,AIP.COD_CURSO_EXTENSAO
+                           ,AIP.COD_TURNO
+                           ,AIP.COD_CAMPUS
+                           ,AIP.COD_TIPO_CURSO
+                           ,AIP.CICLO
+                           ,AIP.NOM_PROCESSO
+                           ,AIP.IND_TIPO_CONTRATO
+                           ,AIP.COD_VERBA_RH
+                           ,AIP.COD_CENTRO_RESULTADO
+                           ,AIP.COD_TIPO_ATUACAO
+                           ,(SELECT TA.IND_CR_APOIO
+                               FROM SIA.TIPO_ATUACAO TA
+                              WHERE TA.COD_TIPO_ATUACAO = AIP.COD_TIPO_ATUACAO
+                                AND TA.IND_FIXO_VARIAVEL = 'F') IND_CR_APOIO
+                       FROM SIA.A_INTERFACE_PAGAMENTO AIP
+                           ,SIA.A_CONTROLE_PAGAMENTO_PROFESSOR CPP
+                      WHERE AIP.DT_MES_ANO_COMPETENCIA = CPP.DT_MES_ANO_COMPETENCIA
+                        AND AIP.NOM_PROCESSO = CPP.NOM_PROCESSO
+                        AND AIP.CICLO = CPP.CICLO
+                        AND AIP.COD_INSTITUICAO = CPP.COD_INSTITUICAO
+                        AND CPP.COD_INSTITUICAO = PI_COD_INSTITUICAO
+                        AND AIP.DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+                        AND AIP.CICLO = M_TAB_CICLO(V_INDICE)
+                        AND AIP.NOM_PROCESSO = M_TAB_NOM_PROCESSO(V_INDICE)
+                        AND (AIP.COD_VERBA_RH IS NULL OR AIP.COD_CENTRO_RESULTADO IS NULL))
+        LOOP
+          --
+          V_COD_VERBA_RH         := NULL;
+          V_COD_CENTRO_RESULTADO := NULL;
+          --
+          -- 3. VERIFICA E BUSCA A VERBA RH
+          --
+          IF R_IP.COD_VERBA_RH IS NULL
+          THEN
+            --
+            V_POSICAO := 30;
+            --
+            V_COD_VERBA_RH := PRO_OBTEM_VERBA_RH(R_IP.COD_TIPO_CURSO, R_IP.COD_CAMPUS, NVL(R_IP.COD_CURSO, R_IP.COD_CURSO_EXTENSAO), R_IP.COD_TURNO, R_IP.IND_TIPO_CONTRATO, R_IP.COD_TIPO_RUBRICA, PI_COD_INSTITUICAO);
+            --
+            IF V_COD_VERBA_RH IS NULL
+            THEN
+              PO_MSG_RETORNO := 'TIPO_CURSO = ' || R_IP.COD_TIPO_CURSO || ', ' || 'CAMPUS = ' || R_IP.COD_CAMPUS || ', ' || 'CURSO = ' || NVL(R_IP.COD_CURSO, R_IP.COD_CURSO_EXTENSAO) || ', ' || 'TIPO_TURNO = ' || R_IP.COD_TURNO || ', ' || 'TIPO_CONTRATO = ' || R_IP.IND_TIPO_CONTRATO || ', ' ||
+                                'TIPO_RUBRICA = ' || R_IP.COD_TIPO_RUBRICA;
+              RAISE ERR_PREVISTO;
+            END IF;
+            --
+          END IF; -- IF R_IP.COD_VERBA_RH IS NULL THEN
+          --
+          -- 4. VERIFICA E BUSCA O CENTRO DE RESULTADO
+          --
+          IF R_IP.COD_CENTRO_RESULTADO IS NULL
+          THEN
+            --
+            V_POSICAO := 40;
+            --
+            --COLOCAR IF PARA O CASO DE SER CURSO_DE_EXTENSAO -> ANALISAR
+            V_COD_CENTRO_RESULTADO := PRO_OBTEM_CENTRO_RESULTADO(R_IP.COD_TIPO_CURSO, R_IP.COD_CAMPUS, NVL(R_IP.COD_CURSO, R_IP.COD_CURSO_EXTENSAO), R_IP.COD_TURNO, R_IP.NOM_PROCESSO, R_IP.COD_TIPO_ATUACAO, PI_COD_INSTITUICAO);
+            --
+            IF V_COD_CENTRO_RESULTADO IS NULL
+            THEN
+              PO_MSG_RETORNO := 'TIPO_CURSO = ' || R_IP.COD_TIPO_CURSO || ', ' || 'CAMPUS = ' || R_IP.COD_CAMPUS || ', ' || 'CURSO = ' || NVL(R_IP.COD_CURSO, R_IP.COD_CURSO_EXTENSAO) || ', ' || 'TIPO_TURNO = ' || R_IP.COD_TURNO || ', ' || 'NOM_PROCESSO = ' || R_IP.NOM_PROCESSO || ', ' ||
+                                'TIPO_ATUACAO = ' || R_IP.COD_TIPO_ATUACAO;
+              RAISE ERR_PREVISTO;
+            END IF;
+            --
+          END IF; -- IF R_IP.COD_CENTRO_RESULTADO IS NULL THEN
+          --
+          -- 5. ALTERA OS DADOS DO PAGAMENTO DAS COLUNAS QUE ESTIVEREM NULAS
+          --
+          V_POSICAO := 50;
+          --
+          UPDATE SIA.A_INTERFACE_PAGAMENTO
+             SET COD_VERBA_RH         = NVL(COD_VERBA_RH, V_COD_VERBA_RH)
+                ,COD_CENTRO_RESULTADO = NVL(COD_CENTRO_RESULTADO, V_COD_CENTRO_RESULTADO)
+           WHERE NUM_SEQ_MOVIMENTO = R_IP.NUM_SEQ_MOVIMENTO
+             AND DT_MES_ANO_COMPETENCIA = R_IP.DT_MES_ANO_COMPETENCIA
+             AND COD_TIPO_RUBRICA = R_IP.COD_TIPO_RUBRICA
+             AND CICLO = R_IP.CICLO
+             AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+          --
+          V_QTD_REG_LIDOS := V_QTD_REG_LIDOS + 1;
+          --
+          /*
+          IF MOD(V_QTD_REG_GRAVADOS,1000) = 0 AND PI_COMMIT = 'S' THEN
+             COMMIT;
+          END IF;
+          */
+        --
+        END LOOP; -- FOR R_IP IN ...
+        --
+        -- RATEIO
+        --
+        IF M_TAB_NOM_PROCESSO(V_INDICE) = 'PRO_ALOCACAO_APURACAO'
+        THEN
+          --
+          FOR R_RA IN (SELECT RA.NUM_SEQ_RATEIO_ALUNO
+                             ,RA.DT_MES_ANO_COMPETENCIA
+                             ,RA.CICLO
+                             ,RA.COD_TURNO
+                             ,RA.COD_CURSO
+                             ,RA.COD_CURSO_EXTENSAO
+                             ,RA.COD_CAMPUS
+                             ,RA.COD_TIPO_CURSO
+                             ,RA.COD_CENTRO_RESULTADO_RATEIO AS COD_CENTRO_RESULTADO
+                         FROM SIA.A_RATEIO_ALUNO RA
+--                             ,SIA.CAMPUS CA
+                        WHERE RA.DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+--                          AND RA.COD_CAMPUS = CA.COD_CAMPUS
+                          AND RA.COD_INSTITUICAO = PI_COD_INSTITUICAO
+                          AND RA.CICLO = M_TAB_CICLO(V_INDICE)
+                          AND RA.COD_CENTRO_RESULTADO_RATEIO IS NULL)
+          LOOP
+            --
+            V_COD_CENTRO_RESULTADO := NULL;
+            --
+            -- 4. VERIFICA E BUSCA O CENTRO DE RESULTADO
+            --
+            IF R_RA.COD_CENTRO_RESULTADO IS NULL
+            THEN
+              --
+              V_POSICAO := 40;
+              --
+              --COLOCAR IF PARA O CASO DE SER CURSO_DE_EXTENSAO -> ANALISAR
+              V_COD_CENTRO_RESULTADO := PRO_OBTEM_CENTRO_RESULTADO(R_RA.COD_TIPO_CURSO, R_RA.COD_CAMPUS, NVL(R_RA.COD_CURSO, R_RA.COD_CURSO_EXTENSAO), R_RA.COD_TURNO, 'PRO_APURACAO_ALOCACAO', NULL, PI_COD_INSTITUICAO);
+              --
+              IF V_COD_CENTRO_RESULTADO IS NULL
+              THEN
+                PO_MSG_RETORNO := 'TIPO_CURSO = ' || R_RA.COD_TIPO_CURSO || ', ' || 'CAMPUS = ' || R_RA.COD_CAMPUS || ', ' || 'CURSO = ' || NVL(R_RA.COD_CURSO, R_RA.COD_CURSO_EXTENSAO) || ', ' || 'TURNO = ' || R_RA.COD_TURNO;
+                RAISE ERR_PREVISTO;
+              END IF;
+              --
+            END IF; -- IF R_IP.COD_CENTRO_RESULTADO IS NULL THEN
+            --
+            --
+            -- 5. ALTERA OS DADOS DO PAGAMENTO DAS COLUNAS QUE ESTIVEREM NULAS
+            --
+            V_POSICAO := 50;
+            --
+            UPDATE SIA.A_RATEIO_ALUNO
+               SET COD_CENTRO_RESULTADO_RATEIO = NVL(COD_CENTRO_RESULTADO_RATEIO, V_COD_CENTRO_RESULTADO)
+             WHERE NUM_SEQ_RATEIO_ALUNO = R_RA.NUM_SEQ_RATEIO_ALUNO
+               AND DT_MES_ANO_COMPETENCIA = R_RA.DT_MES_ANO_COMPETENCIA
+               AND CICLO = R_RA.CICLO
+               AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+            --
+            V_QTD_REG_LIDOS := V_QTD_REG_LIDOS + 1;
+            --
+            /*
+            IF MOD(V_QTD_REG_GRAVADOS,1000) = 0 AND PI_COMMIT = 'S' THEN
+               COMMIT;
+            END IF;
+            */
+          --
+          END LOOP; -- FOR R_IP IN ...
+          --
+        END IF; -- IF M_TAB_NOM_PROCESSO(V_INDICE) = 'PRO_ALOCACAO_APURACAO' THEN
+        --
+      END IF; -- IF M_TAB_CICLO(V_INDICE) IS NOT NULL..
+    --
+    END LOOP; -- FOR V_INDICE IN 1..M_TAB_CICLO.COUNT LOOP
+    --
+    -- 6. ATUALIZA A DATA DE LIBERAÇÃO PARA OS CICLOS VÁLIDOS
+    --
+    V_POSICAO := 60;
+    --
+    FOR V_INDICE IN 1 .. M_TAB_CICLO.COUNT
+    LOOP
+      IF M_TAB_CICLO(V_INDICE) IS NOT NULL AND
+         M_TAB_NOM_PROCESSO(V_INDICE) IS NOT NULL
+      THEN
+
+        UPDATE SIA.A_CONTROLE_PAGAMENTO_PROFESSOR CPP
+           SET CPP.DT_EXPORTACAO_OK = SYSDATE
+         WHERE CPP.DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+           AND CPP.CICLO = M_TAB_CICLO(V_INDICE)
+           AND CPP.NOM_PROCESSO = M_TAB_NOM_PROCESSO(V_INDICE)
+           AND CPP.COD_INSTITUICAO = PI_COD_INSTITUICAO;
+      END IF;
+    END LOOP;
+
+    IF PI_COMMIT = 'S'
+    THEN
+      COMMIT;
+    END IF;
+    --
+    PO_IND_ERRO    := '0';
+    PO_MSG_RETORNO := '';
+    --
+  EXCEPTION
+    WHEN ERR_PREVISTO THEN
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-10' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR PARÂMETROS OBRIGATÓRIOS : ' || PO_MSG_RETORNO;
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO AO LIMPAR A DATA DE LIBERAÇÃO : ' || PO_MSG_RETORNO;
+        WHEN '-25' THEN
+          PO_MSG_RETORNO := 'ERRO AO LISTAR OS REGISTROS SEM VERBA RH E/OU CENTRO RESULTADO : ' || PO_MSG_RETORNO;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR E BUSCAR A VERBA RH : ' || PO_MSG_RETORNO;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR E BUSCAR O CENTRO DE RESULTADO : ' || PO_MSG_RETORNO || '-' || SQLERRM;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO ALTERAR DADOS EM INTERFACE_PAGAMENTO : ' || PO_MSG_RETORNO;
+        WHEN '-60' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR A DATA DE LIBERAÇÃO PARA OS CICLOS VÁLIDOS : ' || PO_MSG_RETORNO;
+        ELSE
+          PO_MSG_RETORNO := PO_MSG_RETORNO || ' - ERRO NÃO LISTADO : ' || PO_MSG_RETORNO || '-' || SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_CICLOS_EXPORT_RH, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+    WHEN OTHERS THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-10' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR PARÂMETROS OBRIGATÓRIOS : ' || V_SQLERRM;
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO AO LIMPAR A DATA DE LIBERAÇÃO : ' || V_SQLERRM;
+        WHEN '-25' THEN
+          PO_MSG_RETORNO := 'ERRO AO LISTAR OS REGISTROS SEM VERBA RH E/OU CENTRO RESULTADO : ' || V_SQLERRM;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR E BUSCAR A VERBA RH : ' || V_SQLERRM;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR E BUSCAR O CENTRO DE RESULTADO : ' || V_SQLERRM || '-' || SQLERRM;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO ALTERAR DADOS EM INTERFACE_PAGAMENTO : ' || V_SQLERRM;
+        WHEN '-60' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR A DATA DE LIBERAÇÃO PARA OS CICLOS VÁLIDOS : ' || V_SQLERRM;
+        ELSE
+          PO_MSG_RETORNO := PO_MSG_RETORNO || ' - ERRO NÃO LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_CICLOS_EXPORT_RH, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, NULL, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+  END PRO_CICLOS_EXPORT_RH;
+  --
+  PROCEDURE PRO_EXPORTA_PAGAMENTO(PI_DT_COMPETENCIA  IN DATE
+                                 ,PI_COD_USUARIO     IN VARCHAR2
+                                 ,PI_TXT_IP          IN VARCHAR2
+                                 ,PI_COMMIT          IN VARCHAR2
+                                 ,PI_COD_INSTITUICAO IN NUMBER
+                                 ,PO_IND_ERRO        OUT VARCHAR2
+                                 ,PO_MSG_RETORNO     OUT VARCHAR2) IS
+
+    --
+    -- P_IND_ERRO           (0) REALIZADO COM SUCESSO
+    --                      (1) ERRO PREVISTO
+    --                      (2) ERRO NÃO PREVISTO
+    --                      (3) ADVERTÊNCIA
+    --
+    ERR_PREVISTO EXCEPTION;
+    V_SQLERRM        VARCHAR2(500);
+    V_TXT_PARAMETROS VARCHAR2(500);
+    V_POSICAO        PLS_INTEGER;
+--    V_AUX            PLS_INTEGER;
+    --V_QTD_REG_LIDOS           PLS_INTEGER;
+    --V_QTDE_PROF_GERADOS       PLS_INTEGER;
+    --V_INDICE                  PLS_INTEGER;
+    --
+    --V_COD_VERBA_RH            VARCHAR2(30);
+    --V_COD_CENTRO_RESULTADO    VARCHAR2(15);
+    --
+    --V_SEP_LIN                 CHAR(1)    := ',';
+    --V_SEP_COL                 CHAR(1)    := '|';
+    --
+    --TAB_NUM_SEQ_ALOCACAO      T_NUMBER := T_NUMBER();
+    --
+  BEGIN
+    --
+    V_TXT_PARAMETROS := ' PI_DT_COMPETENCIA   : ' || TO_CHAR(PI_DT_COMPETENCIA, 'DD/MM/YYYY') || CHR(13) || ' PI_COD_USUARIO      : ' || PI_COD_USUARIO || CHR(13) || ' PI_TXT_IP            : ' || PI_TXT_IP || CHR(13) || ' PI_COMMIT            : ' || PI_COMMIT;
+    --
+    --V_QTD_REG_LIDOS    := 0;
+    --
+    -- 1. VERIFICA PARAMETROS OBRIGATÓRIOS
+    --
+    V_POSICAO := 10;
+    --
+    IF PI_DT_COMPETENCIA IS NULL
+    THEN
+      PO_MSG_RETORNO := 'A DATA DE COMPETÊNCIA DEVE SER INFORMADA.';
+      RAISE ERR_PREVISTO;
+    END IF;
+    --
+    -- 2. ATUALIZA A TABELA INTERFACE_PAGAMENTO
+    --
+    V_POSICAO := 20;
+    --
+    INSERT INTO SIA.INTERFACE_PAGAMENTO
+      (DT_MES_ANO_COMPETENCIA
+      ,NUM_SEQ_MOVIMENTO
+      ,COD_TIPO_RUBRICA
+      ,MES_ANO_ATUACAO
+      ,NUM_SEQ_ALOCACAO
+      ,COD_CURSO
+      ,COD_CURSO_EXTENSAO
+      ,NUM_SEQ_FALTA
+      ,COD_TURNO
+      ,COD_CAMPUS
+      ,COD_TIPO_CURSO
+      ,NUM_SEQ_ATUACAO
+      ,NUM_SEQ_SOLICITACAO
+      ,DT_GERACAO
+      ,COD_PROFESSOR
+      ,QTD_HORAS_MOVIMENTO
+      ,VALOR_MOVIMENTO
+      ,DT_LIBERACAO
+      ,DT_PROCESSAMENTO
+      ,NUM_MATRICULA
+      ,IND_SITUACAO_PAGAMENTO
+      ,IND_DESTINO
+      ,IND_CURSO_EXTENSAO
+      ,PERCENTUAL_APRIMORAMENTO
+      ,COD_BANCO
+      ,COD_AGENCIA
+      ,COD_AGENCIA_DV
+      ,COD_CONTA_CORRENTE
+      ,COD_CONTA_CORRENTE_DV
+      ,COD_CATEGORIA_PROFESSOR
+      ,NUM_SEQ_TURMA
+      ,COD_TURMA_EXTENSAO
+      ,COD_USUARIO_LOG
+      ,DT_ATUALIZA_LOG
+      ,TXT_IP_LOG
+      ,CICLO
+      ,COD_VERBA_RH
+      ,NOM_PROCESSO
+      ,IND_TIPO_CONTRATO
+      ,COD_CENTRO_RESULTADO
+      ,COD_TIPO_ATUACAO
+      ,QTD_HORAS_TRABALHADAS
+      ,COD_INSTITUICAO
+      ,QTD_DIAS_TRABALHADOS)
+      SELECT AIP.DT_MES_ANO_COMPETENCIA
+            ,AIP.NUM_SEQ_MOVIMENTO
+            ,AIP.COD_TIPO_RUBRICA
+            ,AIP.MES_ANO_ATUACAO
+            ,AIP.NUM_SEQ_ALOCACAO
+            ,AIP.COD_CURSO
+            ,AIP.COD_CURSO_EXTENSAO
+            ,AIP.NUM_SEQ_FALTA
+            ,AIP.COD_TURNO
+            ,AIP.COD_CAMPUS
+            ,AIP.COD_TIPO_CURSO
+            ,AIP.NUM_SEQ_ATUACAO
+            ,AIP.NUM_SEQ_SOLICITACAO
+            ,AIP.DT_GERACAO
+            ,AIP.COD_PROFESSOR
+            ,AIP.QTD_HORAS_MOVIMENTO
+            ,AIP.VALOR_MOVIMENTO
+            ,AIP.DT_LIBERACAO
+            ,AIP.DT_PROCESSAMENTO
+            ,AIP.NUM_MATRICULA
+            ,AIP.IND_SITUACAO_PAGAMENTO
+            ,AIP.IND_DESTINO
+            ,AIP.IND_CURSO_EXTENSAO
+            ,AIP.PERCENTUAL_APRIMORAMENTO
+            ,AIP.COD_BANCO
+            ,AIP.COD_AGENCIA
+            ,AIP.COD_AGENCIA_DV
+            ,AIP.COD_CONTA_CORRENTE
+            ,AIP.COD_CONTA_CORRENTE_DV
+            ,AIP.COD_CATEGORIA_PROFESSOR
+            ,AIP.NUM_SEQ_TURMA
+            ,AIP.COD_TURMA_EXTENSAO
+            ,PI_COD_USUARIO
+            ,SYSDATE
+            ,PI_TXT_IP
+            ,AIP.CICLO
+            ,AIP.COD_VERBA_RH
+            ,AIP.NOM_PROCESSO
+            ,AIP.IND_TIPO_CONTRATO
+            ,AIP.COD_CENTRO_RESULTADO
+            ,AIP.COD_TIPO_ATUACAO
+            ,AIP.QTD_HORAS_TRABALHADAS
+            ,AIP.COD_INSTITUICAO
+            ,AIP.QTD_DIAS_TRABALHADOS
+        FROM SIA.A_INTERFACE_PAGAMENTO          AIP
+            ,SIA.A_CONTROLE_PAGAMENTO_PROFESSOR CPP
+       WHERE AIP.DT_MES_ANO_COMPETENCIA BETWEEN TRUNC(PI_DT_COMPETENCIA) AND TRUNC(PI_DT_COMPETENCIA) + 1
+            --           AIP.DT_MES_ANO_COMPETENCIA = PI_DT_COMPETENCIA
+         AND CPP.DT_EXPORTACAO_OK IS NOT NULL -- CICLO VÁLIDO
+         AND AIP.DT_MES_ANO_COMPETENCIA = CPP.DT_MES_ANO_COMPETENCIA
+         AND AIP.NOM_PROCESSO = CPP.NOM_PROCESSO
+         AND AIP.CICLO = CPP.CICLO
+         AND AIP.COD_INSTITUICAO = CPP.COD_INSTITUICAO
+         AND CPP.COD_INSTITUICAO = PI_COD_INSTITUICAO;
+    --
+    -- 3. ATUALIZA A TABELA CONTROLE_PAGAMENTO_PROFESSOR
+    --
+    V_POSICAO := 30;
+    --
+    INSERT INTO SIA.CONTROLE_PAGAMENTO_PROFESSOR
+      (DT_MES_ANO_COMPETENCIA
+      ,CICLO
+      ,IND_TIPO_PROCESSO
+      ,IND_RETORNO
+      ,TXT_MSG_PROCESSO
+      ,QTD_GRAVADOS_IP
+      ,TOTAL_REGS_RUBRICA_1
+      ,TOTAL_REGS_RUBRICA_2
+      ,TOTAL_REGS_RUBRICA_3
+      ,TOTAL_REGS_RUBRICA_4
+      ,TOTAL_REGS_RUBRICA_5
+      ,TOTAL_REGS_RUBRICA_6
+      ,TOTAL_HORAS_RUBRICA_1
+      ,TOTAL_HORAS_RUBRICA_2
+      ,TOTAL_HORAS_RUBRICA_3
+      ,TOTAL_HORAS_RUBRICA_4
+      ,TOTAL_HORAS_RUBRICA_5
+      ,TOTAL_HORAS_RUBRICA_6
+      ,TOTAL_REAIS_RUBRICA_1
+      ,TOTAL_REAIS_RUBRICA_2
+      ,TOTAL_REAIS_RUBRICA_3
+      ,TOTAL_REAIS_RUBRICA_4
+      ,TOTAL_REAIS_RUBRICA_5
+      ,TOTAL_REAIS_RUBRICA_6
+      ,QTD_REGS_DESTINO_1
+      ,QTD_REGS_DESTINO_2
+      ,QTD_REGS_DESTINO_3
+      ,DT_INICIO_GERACAO
+      ,DT_FIM_GERACAO
+      ,DT_ENVIO
+      ,IND_GERADO
+      ,IND_TIPO_CONTRATO
+      ,IND_ENVIADO
+      ,DT_GERACAO
+      ,TXT_DESCRICAO_RUBRICA_1
+      ,TXT_DESCRICAO_RUBRICA_2
+      ,TXT_DESCRICAO_RUBRICA_3
+      ,TXT_DESCRICAO_RUBRICA_4
+      ,TXT_DESCRICAO_RUBRICA_5
+      ,TXT_DESCRICAO_RUBRICA_6
+      ,DT_EXPORTACAO_OK
+      ,COD_USUARIO_LOG
+      ,DT_ATUALIZA_LOG
+      ,TXT_IP_LOG
+      ,NOM_PROCESSO
+      ,COD_TIPO_CURSO
+       --                                                     , COD_PROFESSOR
+      ,NUM_SEQ_DADOS_PROFESSOR
+      ,COD_CAMPUS
+      ,DT_INICIO_SELECAO
+      ,DT_FIM_SELECAO
+      ,COD_INSTITUICAO)
+      SELECT DT_MES_ANO_COMPETENCIA
+            ,CICLO
+            ,IND_TIPO_PROCESSO
+            ,IND_RETORNO
+            ,TXT_MSG_PROCESSO
+            ,QTD_GRAVADOS_IP
+            ,TOTAL_REGS_RUBRICA_1
+            ,TOTAL_REGS_RUBRICA_2
+            ,TOTAL_REGS_RUBRICA_3
+            ,TOTAL_REGS_RUBRICA_4
+            ,TOTAL_REGS_RUBRICA_5
+            ,TOTAL_REGS_RUBRICA_6
+            ,TOTAL_HORAS_RUBRICA_1
+            ,TOTAL_HORAS_RUBRICA_2
+            ,TOTAL_HORAS_RUBRICA_3
+            ,TOTAL_HORAS_RUBRICA_4
+            ,TOTAL_HORAS_RUBRICA_5
+            ,TOTAL_HORAS_RUBRICA_6
+            ,TOTAL_REAIS_RUBRICA_1
+            ,TOTAL_REAIS_RUBRICA_2
+            ,TOTAL_REAIS_RUBRICA_3
+            ,TOTAL_REAIS_RUBRICA_4
+            ,TOTAL_REAIS_RUBRICA_5
+            ,TOTAL_REAIS_RUBRICA_6
+            ,QTD_REGS_DESTINO_1
+            ,QTD_REGS_DESTINO_2
+            ,QTD_REGS_DESTINO_3
+            ,DT_INICIO_GERACAO
+            ,DT_FIM_GERACAO
+            ,DT_ENVIO
+            ,IND_GERADO
+            ,IND_TIPO_CONTRATO
+            ,IND_ENVIADO
+            ,DT_GERACAO
+            ,TXT_DESCRICAO_RUBRICA_1
+            ,TXT_DESCRICAO_RUBRICA_2
+            ,TXT_DESCRICAO_RUBRICA_3
+            ,TXT_DESCRICAO_RUBRICA_4
+            ,TXT_DESCRICAO_RUBRICA_5
+            ,TXT_DESCRICAO_RUBRICA_6
+            ,DT_EXPORTACAO_OK
+            ,PI_COD_USUARIO
+            ,SYSDATE
+            ,PI_TXT_IP
+            ,NOM_PROCESSO
+            ,COD_TIPO_CURSO
+             --                   , COD_PROFESSOR
+            ,NUM_SEQ_DADOS_PROFESSOR
+            ,COD_CAMPUS
+            ,DT_INICIO_SELECAO
+            ,DT_FIM_SELECAO
+            ,COD_INSTITUICAO
+        FROM SIA.A_CONTROLE_PAGAMENTO_PROFESSOR
+       WHERE DT_MES_ANO_COMPETENCIA BETWEEN TRUNC(PI_DT_COMPETENCIA) AND TRUNC(PI_DT_COMPETENCIA) + 1
+         AND DT_EXPORTACAO_OK IS NOT NULL -- CICLO VÁLIDO
+         AND COD_INSTITUICAO = PI_COD_INSTITUICAO;
+    --
+    -- 6 - JOGAR OS VALORES DA COMPETENCIA ANTERIOR PARA A TABELA DE HISTORICO INTERFACE.HIST_RATEIO_ALUNO
+    --
+    V_POSICAO := 40;
+    --
+    INSERT INTO INTERFACE.RATEIO_ALUNO
+      (NUM_SEQ_RATEIO_ALUNO
+      ,DT_MES_ANO_COMPETENCIA
+      ,CICLO
+      ,NUM_SEQ_TURMA
+      ,COD_TURNO
+      ,COD_TURMA_EXTENSAO
+      ,COD_CURSO
+      ,COD_CURSO_EXTENSAO
+      ,COD_CAMPUS
+      ,COD_TIPO_CURSO
+      ,QTD_ALUNO_RATEIO
+      ,COD_CENTRO_RESULTADO_RATEIO
+      ,COD_ORDEM_INTERNA
+      ,NUM_MATRICULA
+      ,COD_USUARIO_LOG
+      ,DT_ATUALIZA_LOG
+      ,TXT_IP_LOG
+      ,COD_INSTITUICAO)
+      SELECT ARA.NUM_SEQ_RATEIO_ALUNO
+            ,ARA.DT_MES_ANO_COMPETENCIA
+            ,ARA.CICLO
+            ,ARA.NUM_SEQ_TURMA
+            ,ARA.COD_TURNO
+            ,ARA.COD_TURMA_EXTENSAO
+            ,ARA.COD_CURSO
+            ,ARA.COD_CURSO_EXTENSAO
+            ,ARA.COD_CAMPUS
+            ,ARA.COD_TIPO_CURSO
+            ,ARA.QTD_ALUNO_RATEIO
+            ,ARA.COD_CENTRO_RESULTADO_RATEIO
+            ,ARA.COD_ORDEM_INTERNA
+            ,ARA.NUM_MATRICULA
+            ,ARA.COD_USUARIO_LOG
+            ,ARA.DT_ATUALIZA_LOG
+            ,ARA.TXT_IP_LOG
+            ,CPP.COD_INSTITUICAO
+        FROM SIA.A_RATEIO_ALUNO                 ARA
+            ,SIA.A_CONTROLE_PAGAMENTO_PROFESSOR CPP
+       WHERE ARA.DT_MES_ANO_COMPETENCIA BETWEEN TRUNC(PI_DT_COMPETENCIA) AND TRUNC(PI_DT_COMPETENCIA) + 1
+         AND CPP.DT_EXPORTACAO_OK IS NOT NULL -- CICLO VÁLIDO
+         AND ARA.DT_MES_ANO_COMPETENCIA = CPP.DT_MES_ANO_COMPETENCIA
+         AND CPP.NOM_PROCESSO = 'PRO_APURACAO_ALOCACAO' -- CARGA HORARIA
+         AND ARA.CICLO = CPP.CICLO
+         AND ARA.COD_INSTITUICAO = CPP.COD_INSTITUICAO
+         AND CPP.COD_INSTITUICAO = PI_COD_INSTITUICAO;
+
+    -- 9 - ATUALIZA A TABELA INTERFACE.SAP_LANCTO_PROFESSOR COM O SOMATÓRIO POR GRUPO
+    --     DE SIA.INTERFACE_PAGAMENTO
+    --
+    V_POSICAO := 50;
+    --
+    INSERT INTO INTERFACE.SAP_LANCTO_PROFESSOR
+      (NUM_SEQ_LANCTO_PROFESSOR
+      ,DT_MES_ANO_COMPETENCIA
+      ,NUM_MATRICULA
+      ,COD_VERBA_RH
+      ,COD_CAMPUS
+      ,COD_TIPO_CURSO
+      ,COD_CURSO
+      ,COD_CURSO_EXTENSAO
+      ,COD_TURNO
+      ,QTD_HORAS_LANCTO
+      ,COD_CENTRO_RESULTADO
+      ,VAL_LANCTO
+      ,QTD_HORAS_TRABALHADAS
+      ,NUM_SEQ_TURMA
+      ,COD_USUARIO_LOG
+      ,DT_ATUALIZA_LOG
+      ,TXT_IP_LOG
+      ,COD_EMPRESA
+      ,IND_TIPO_CONTRATO
+      ,COD_MUNICIPIO_PAGAMENTO
+      ,COD_INSTITUICAO
+      ,NUM_SEQ_ALOCACAO
+      ,QTD_DIAS_TRABALHADOS)
+      SELECT INTERFACE.S_SAP_LANCTO_PROFESSOR.NEXTVAL
+            ,DT_MES_ANO_COMPETENCIA
+            ,NUM_MATRICULA
+            ,COD_VERBA_RH
+            ,COD_CAMPUS
+            ,COD_TIPO_CURSO
+            ,COD_CURSO
+            ,COD_CURSO_EXTENSAO
+            ,COD_TURNO
+            ,SUM_QTD_HORAS_MOVIMENTO
+            ,COD_CENTRO_RESULTADO
+            ,SUM_VALOR_MOVIMENTO
+            ,SUM_QTD_HORAS_TRABALHADAS
+            ,NUM_SEQ_TURMA
+            ,PI_COD_USUARIO
+            ,SYSDATE
+            ,PI_TXT_IP
+            ,COD_EMPRESA_RH
+            ,IND_TIPO_CONTRATO
+            ,COD_MUNICIPIO_FOPAG
+            ,COD_INSTITUICAO
+            ,NUM_SEQ_ALOCACAO
+            ,QTD_DIAS_TRABALHADOS
+        FROM (SELECT DT_MES_ANO_COMPETENCIA
+                    ,NUM_MATRICULA
+                    ,COD_VERBA_RH
+                    ,COD_CAMPUS
+                    ,COD_TIPO_CURSO
+                    ,COD_CURSO
+                    ,COD_CURSO_EXTENSAO
+                    ,COD_TURNO
+                    ,SUM(NVL(QTD_HORAS_MOVIMENTO, 0)) SUM_QTD_HORAS_MOVIMENTO
+                    ,COD_CENTRO_RESULTADO
+                    ,SUM(NVL(VALOR_MOVIMENTO, 0)) SUM_VALOR_MOVIMENTO
+                    ,SUM(NVL(QTD_HORAS_TRABALHADAS, 0)) SUM_QTD_HORAS_TRABALHADAS
+                    ,NUM_SEQ_TURMA
+                    ,IND_TIPO_CONTRATO
+                    ,COD_MUNICIPIO_FOPAG
+                    ,COD_EMPRESA_RH
+                    ,COD_INSTITUICAO
+                    ,NUM_SEQ_ALOCACAO
+                    ,QTD_DIAS_TRABALHADOS
+                FROM (SELECT AIP.DT_MES_ANO_COMPETENCIA
+                            ,(CASE
+                               WHEN AIP.IND_TIPO_CONTRATO = 'F' -- FUNCIONARIO
+                                THEN
+                                AIP.NUM_MATRICULA
+                               ELSE
+                                LPAD((SELECT DISTINCT DP.CPF_PROFESSOR
+                                       FROM SIA.PROFESSOR       P
+                                           ,SIA.DADOS_PROFESSOR DP
+                                      WHERE P.NUM_SEQ_DADOS_PROFESSOR = DP.NUM_SEQ_DADOS_PROFESSOR
+                                        AND P.COD_PROFESSOR = AIP.COD_PROFESSOR), 11, '0')
+                             END) NUM_MATRICULA
+                            ,AIP.COD_VERBA_RH
+                            ,AIP.COD_CAMPUS
+                            ,AIP.COD_TIPO_CURSO
+                            ,AIP.COD_CURSO
+                            ,AIP.COD_CURSO_EXTENSAO
+                            ,AIP.COD_TURNO
+                            ,AIP.QTD_HORAS_MOVIMENTO
+                            ,AIP.COD_CENTRO_RESULTADO
+                            ,AIP.VALOR_MOVIMENTO
+                            ,AIP.QTD_HORAS_TRABALHADAS
+                            ,AIP.NUM_SEQ_TURMA
+                            ,AIP.IND_TIPO_CONTRATO
+                            ,NVL((SELECT CA.COD_MUNICIPIO_FOPAG FROM SIA.CAMPUS CA
+                                   WHERE CA.COD_CAMPUS = AIP.COD_CAMPUS), IES.COD_MUNICIPIO_FOPAG) COD_MUNICIPIO_FOPAG
+                            ,MAN.COD_EMPRESA_RH
+                            ,CPP.COD_INSTITUICAO
+                            ,AIP.NUM_SEQ_ALOCACAO
+                            ,AIP.QTD_DIAS_TRABALHADOS
+                        FROM SIA.INTERFACE_PAGAMENTO          AIP
+                            ,SIA.CONTROLE_PAGAMENTO_PROFESSOR CPP
+                            ,SIA.INSTITUICAO_ENSINO           IES
+                            ,SCS.MANTENEDORA                  MAN
+                       WHERE AIP.DT_MES_ANO_COMPETENCIA BETWEEN TRUNC(PI_DT_COMPETENCIA) AND TRUNC(PI_DT_COMPETENCIA) + 1
+                         AND CPP.DT_EXPORTACAO_OK IS NOT NULL -- CICLO VÁLIDO
+                         AND AIP.DT_MES_ANO_COMPETENCIA = CPP.DT_MES_ANO_COMPETENCIA
+                         AND AIP.NOM_PROCESSO = CPP.NOM_PROCESSO
+                         AND AIP.CICLO        = CPP.CICLO
+                         AND AIP.COD_INSTITUICAO = CPP.COD_INSTITUICAO
+                         AND CPP.COD_INSTITUICAO = IES.COD_INSTITUICAO
+                         AND IES.SGL_MANTENEDORA = MAN.SGL_MANTENEDORA
+                         AND CPP.COD_INSTITUICAO = PI_COD_INSTITUICAO
+                    )
+               GROUP BY DT_MES_ANO_COMPETENCIA
+                       ,NUM_MATRICULA
+                       ,COD_VERBA_RH
+                       ,COD_CAMPUS
+                       ,COD_TIPO_CURSO
+                       ,COD_CURSO
+                       ,COD_CURSO_EXTENSAO
+                       ,COD_TURNO
+                       ,COD_CENTRO_RESULTADO
+                       ,NUM_SEQ_TURMA
+                       ,PI_COD_USUARIO
+                       ,SYSDATE
+                       ,PI_TXT_IP
+                       ,IND_TIPO_CONTRATO
+                       ,COD_MUNICIPIO_FOPAG
+                       ,COD_EMPRESA_RH
+                       ,COD_INSTITUICAO
+                       ,NUM_SEQ_ALOCACAO
+                       ,QTD_DIAS_TRABALHADOS);
+    --
+    -- 10 - ATUALIZA AS ALOCAÇÕES TRAZIDAS NO PROCESSO
+    --
+    V_POSICAO := 60;
+    --
+    UPDATE SIA.ALOCACAO_PROFESSOR AP
+       SET AP.DT_PAGAMENTO = SYSDATE
+     WHERE NUM_SEQ_ALOCACAO IN (SELECT AIP.NUM_SEQ_ALOCACAO
+                                  FROM SIA.A_INTERFACE_PAGAMENTO          AIP
+                                      ,SIA.A_CONTROLE_PAGAMENTO_PROFESSOR CPP
+                                 WHERE AIP.DT_MES_ANO_COMPETENCIA BETWEEN TRUNC(PI_DT_COMPETENCIA) AND TRUNC(PI_DT_COMPETENCIA) + 1
+                                   AND CPP.DT_EXPORTACAO_OK IS NOT NULL -- CICLO VÁLIDO
+                                   AND AIP.DT_MES_ANO_COMPETENCIA = CPP.DT_MES_ANO_COMPETENCIA
+                                   AND AIP.NOM_PROCESSO = 'PRO_APURACAO_ESPECIALIZACAO'
+                                   AND AIP.CICLO = CPP.CICLO
+                                   AND AIP.COD_INSTITUICAO = CPP.COD_INSTITUICAO
+                                   AND CPP.COD_INSTITUICAO = PI_COD_INSTITUICAO);
+    --
+    IF PI_COMMIT = 'S' THEN
+      COMMIT;
+    END IF;
+
+    PO_IND_ERRO    := '0';
+    PO_MSG_RETORNO := '';
+    --
+  EXCEPTION
+    WHEN ERR_PREVISTO THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-10' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR PARÂMETROS OBRIGATÓRIOS : ' || PO_MSG_RETORNO;
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DADOS EM INTERFACE_PAGAMENTO : ' || PO_MSG_RETORNO;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DADOS EM CONTROLE_PAGAMENTO_PROFESSOR : ' || PO_MSG_RETORNO;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DADOS EM INTERFACE.RATEIO_ALUNO : ' || PO_MSG_RETORNO;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DADOS EM INTERFACE.SAP_LANCTO_PROFESSOR : ' || PO_MSG_RETORNO;
+        WHEN '-60' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DATA DE ALOCAÇÃO DA ESPECIALIZAÇÃO : ' || PO_MSG_RETORNO;
+        ELSE
+          PO_MSG_RETORNO := PO_MSG_RETORNO || ' - ERRO NÃO LISTADO : ' || PO_MSG_RETORNO;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_EXPORTA_PAGAMENTO, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+    WHEN OTHERS THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-10' THEN
+          PO_MSG_RETORNO := 'ERRO AO VERIFICAR PARÂMETROS OBRIGATÓRIOS : ' || V_SQLERRM;
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DADOS EM INTERFACE_PAGAMENTO : ' || V_SQLERRM;
+        WHEN '-30' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DADOS EM CONTROLE_PAGAMENTO_PROFESSOR : ' || V_SQLERRM;
+        WHEN '-40' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DADOS EM INTERFACE.RATEIO_ALUNO : ' || V_SQLERRM;
+        WHEN '-50' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR DADOS EM INTERFACE.SAP_LANCTO_PROFESSOR : ' || V_SQLERRM;
+        WHEN '-60' THEN
+          PO_MSG_RETORNO := 'ERRO AO ATUALIZAR AS ALOCAÇÕES DE ESPECIALIZAÇÃO TRAZIDAS NO PROCESSO : ' || V_SQLERRM;
+        ELSE
+          PO_MSG_RETORNO := PO_MSG_RETORNO || ' - ERRO NÃO LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_EXPORTA_PAGAMENTO, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+  END PRO_EXPORTA_PAGAMENTO;
+  --
+  --    GERAR ARQUIVO TEXTO DOS PROFESSORES CONTIDOS E GERADOS EM INTERFACE_PAGAMENTO.
+  --
+  PROCEDURE PRO_EXPORTA_PROFESSOR(PI_DT_COMPETENCIA    IN DATE
+                                 ,PI_DT_ALT_CAD_INI    IN DATE
+                                 ,PI_DT_ALT_CAD_FIM    IN DATE
+                                 ,PI_IND_TIPO_CONTRATO IN VARCHAR2
+                                 ,PI_COMMIT            IN VARCHAR2
+                                 ,PO_QTDE_PROF_GERADOS OUT INTEGER
+                                 ,PO_IND_ERRO          OUT VARCHAR2
+                                 ,PO_MSG_RETORNO       OUT VARCHAR2
+                                 ,PI_COD_INSTITUICAO   IN NUMBER) IS
+    --
+    ERR_TRATA_ERRO EXCEPTION;
+    ERR_PREVISTO EXCEPTION;
+    ERR_NAO_PREVISTO EXCEPTION;
+    ERR_ADVERTENCIA EXCEPTION;
+    --
+    V_SQL         VARCHAR2(7000);
+    V_ERRO_ORACLE VARCHAR2(5000);
+    --V_IND_ERRO                  VARCHAR2(1);
+    --V_MSG_RETORNO               VARCHAR2(5000);
+    V_TXT_PARAMETROS     VARCHAR2(5000);
+    V_POSICAO            NUMBER(03);
+    V_LINHA              VARCHAR2(5000);
+    V_NOME_ARQ           VARCHAR2(50);
+    V_ARQ_RETORNO        SYS.UTL_FILE.FILE_TYPE;
+    V_NUMERO_LINHA       PLS_INTEGER;
+    V_CAMINHO_DESTINO_OK INTERFACE_ARQUIVO.CAMINHO_DESTINO_OK%TYPE;
+    V_EXT_ARQ            INTERFACE_ARQUIVO.EXTENSAO_ARQUIVO%TYPE;
+    --      V_DT_COMPETENCIA            DATE;
+    V_ACHOU              PLS_INTEGER;
+
+    V_COD_EMPRESA_RH     VARCHAR2(2);
+    /*RAPHAEL BARRENECHEA - PEOPLEWARE - SRD 379 - 21/09/2010 - INÍCIO*/
+    vCMP21               BINARY_INTEGER;
+    vCMP22               VARCHAR2(4);
+    /*RAPHAEL BARRENECHEA - PEOPLEWARE - SRD 379 - 21/09/2010 - FIM*/
+
+    --
+    --
+    TYPE RECORD_PROFESSOR IS RECORD(
+       AGENCIA              SIA.DADOS_PROFESSOR.COD_AGENCIA%TYPE
+      ,BAIRRO               SIA.BAIRRO.NOM_BAIRRO%TYPE
+      ,BANCO                SIA.DADOS_PROFESSOR.COD_BANCO%TYPE
+      ,PAGTO_VIA_DOC        VARCHAR2(3)
+      ,CEP                  SIA.DADOS_PROFESSOR.CEP_PROFESSOR%TYPE
+      ,COMPLEMENTO          SIA.DADOS_PROFESSOR.NUM_COMPLEMENTO_ENDERECO%TYPE
+      ,CONTA                SIA.DADOS_PROFESSOR.COD_CONTA_CORRENTE%TYPE
+      ,CPF                  VARCHAR2(11)
+      ,AGENCIA_DV           SIA.DADOS_PROFESSOR.COD_AGENCIA_DV%TYPE
+      ,DIGITO_CONTA         SIA.DADOS_PROFESSOR.COD_CONTA_CORRENTE_DV%TYPE
+      ,DOMICILIADO_EXTERIOR VARCHAR2(3)
+      ,ENDERECO             SIA.DADOS_PROFESSOR.ENDERECO_PROFESSOR%TYPE
+      ,FORMA_PAGAMENTO      VARCHAR2(3)
+      ,FUNCAO               SIA.PROFESSOR.COD_CARGO_RH%TYPE
+      ,MUNICIPIO            SIA.DADOS_PROFESSOR.COD_MUNICIPIO_FOPAG%TYPE
+      ,NOME                 SIA.DADOS_PROFESSOR.NOM_PROFESSOR%TYPE
+      ,NUMERO               SIA.DADOS_PROFESSOR.NUM_ENDERECO%TYPE
+      ,PREVIDENCIA_SOCIAL   SIA.DADOS_PROFESSOR.COD_PIS_PASEP_CI%TYPE
+      ,PAGAMENTO_BANCO      VARCHAR2(3)
+      ,TIPO                 VARCHAR2(6));
+    --
+    R_PROF RECORD_PROFESSOR;
+    --
+    TYPE C_PROFESSOR_TYPE IS REF CURSOR;
+    CURSOR_PROF C_PROFESSOR_TYPE;
+    --
+    PROCEDURE INCLUI_LINHA(P_LINHA_IN IN VARCHAR2) IS
+    BEGIN
+      --
+      V_NUMERO_LINHA := V_NUMERO_LINHA + 1;
+      SYS.UTL_FILE.PUT_LINE(V_ARQ_RETORNO, P_LINHA_IN);
+      PO_QTDE_PROF_GERADOS := PO_QTDE_PROF_GERADOS + 1;
+      --
+    EXCEPTION
+      WHEN SYS.UTL_FILE.INVALID_OPERATION THEN
+        --
+        PO_MSG_RETORNO := 'NÃO FOI POSSÍVEL LER O REGISTRO (' || V_NUMERO_LINHA || ') DO ARQUIVO DE RETORNO (' || V_NOME_ARQ || ').';
+        RAISE ERR_PREVISTO;
+        --
+      WHEN SYS.UTL_FILE.INVALID_FILEHANDLE THEN
+        --
+        PO_MSG_RETORNO := 'NÃO FOI POSSÍVEL CARREGAR O REGISTRO (' || V_NUMERO_LINHA || ') DO ARQUIVO DE RETORNO (' || V_NOME_ARQ || ').';
+        RAISE ERR_PREVISTO;
+        --
+      WHEN SYS.UTL_FILE.WRITE_ERROR THEN
+        --
+        PO_MSG_RETORNO := 'ERRO NA OPERAÇÃO DE GRAVAÇÃO DO REGISTRO (' || V_NUMERO_LINHA || ') DO ARQUIVO DE RETORNO (' || V_NOME_ARQ || ').';
+        RAISE ERR_PREVISTO;
+        --
+    END INCLUI_LINHA;
+    --
+    FUNCTION RETIRA_CARACTER_ESPECIAL(P_STRING IN VARCHAR2) RETURN VARCHAR2 IS
+      --
+      V_STRING VARCHAR2(70);
+      --
+    BEGIN
+      --
+      V_STRING := UPPER(P_STRING);
+      V_STRING := REPLACE(V_STRING, 'Á', 'A');
+      V_STRING := REPLACE(V_STRING, 'À', 'A');
+      V_STRING := REPLACE(V_STRING, 'Â', 'A');
+      V_STRING := REPLACE(V_STRING, 'Ã', 'A');
+      V_STRING := REPLACE(V_STRING, 'É', 'E');
+      V_STRING := REPLACE(V_STRING, 'È', 'E');
+      V_STRING := REPLACE(V_STRING, 'Ê', 'E');
+      V_STRING := REPLACE(V_STRING, 'Ë', 'E');
+      V_STRING := REPLACE(V_STRING, 'Í', 'I');
+      V_STRING := REPLACE(V_STRING, 'Ì', 'I');
+      V_STRING := REPLACE(V_STRING, 'Î', 'I');
+      V_STRING := REPLACE(V_STRING, 'Ï', 'I');
+      V_STRING := REPLACE(V_STRING, 'Ó', 'O');
+      V_STRING := REPLACE(V_STRING, 'Ò', 'O');
+      V_STRING := REPLACE(V_STRING, 'Ô', 'O');
+      V_STRING := REPLACE(V_STRING, 'Ö', 'O');
+      V_STRING := REPLACE(V_STRING, 'Õ', 'O');
+      V_STRING := REPLACE(V_STRING, 'Ú', 'U');
+      V_STRING := REPLACE(V_STRING, 'Ù', 'U');
+      V_STRING := REPLACE(V_STRING, 'Û', 'U');
+      V_STRING := REPLACE(V_STRING, 'Ü', 'U');
+      V_STRING := REPLACE(V_STRING, 'Ç', 'C');
+      V_STRING := REPLACE(V_STRING, '*', ' ');
+      V_STRING := REPLACE(V_STRING, '/', ' ');
+      V_STRING := REPLACE(V_STRING, '\', ' ');
+      V_STRING := REPLACE(V_STRING, '(', ' ');
+      V_STRING := REPLACE(V_STRING, ')', ' ');
+      V_STRING := REPLACE(V_STRING, '!', ' ');
+      V_STRING := REPLACE(V_STRING, '.', ' ');
+      V_STRING := REPLACE(V_STRING, ',', ' ');
+      V_STRING := REPLACE(V_STRING, ':', ' ');
+      V_STRING := REPLACE(V_STRING, '-', ' ');
+      V_STRING := REPLACE(V_STRING, '  ', ' ');
+      RETURN V_STRING;
+      --
+    END RETIRA_CARACTER_ESPECIAL;
+    --
+    --
+    --
+  BEGIN
+    PO_QTDE_PROF_GERADOS := 0;
+    -- QUERY PARA O CURSOR
+
+    V_SQL := '
+      SELECT DP.COD_AGENCIA AGENCIA
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL2(DP.CEP_PROFESSOR, B.NOM_BAIRRO, ''BARRA DA TIJUCA'')
+               ELSE
+                NVL2(DP.CEP_PROFESSOR_COM, B.NOM_BAIRRO, ''BARRA DA TIJUCA'')
+              END) BAIRRO
+            ,DP.COD_BANCO BANCO
+            ,(CASE
+               WHEN DP.COD_BANCO <> 409 THEN
+                ''409''
+               ELSE
+                NULL
+              END) PAGTO_VIA_DOC
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL(DP.CEP_PROFESSOR, ''22775003'')
+               ELSE
+                NVL(DP.CEP_PROFESSOR_COM, ''22775003'')
+              END) CEP
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL2(DP.CEP_PROFESSOR, DP.NUM_COMPLEMENTO_ENDERECO, ''PARTE'')
+               ELSE
+                NVL2(DP.CEP_PROFESSOR_COM, DP.NUM_COMPLEMENTO_COMERCIAL, ''PARTE'')
+              END) COMPLEMENTO
+            ,DP.COD_CONTA_CORRENTE CONTA
+            ,LPAD(DP.CPF_PROFESSOR, 11, 0) CPF
+            ,DP.COD_AGENCIA_DV AGENCIA_DV
+            ,DP.COD_CONTA_CORRENTE_DV DIGITO_CONTA
+            ,''NO'' DOMICILIADO_EXTERIOR
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL2(DP.CEP_PROFESSOR, DP.ENDERECO_PROFESSOR, ''AV AYRTON SENNA'')
+               ELSE
+                NVL2(DP.CEP_PROFESSOR_COM, DP.ENDERECO_PROFESSOR_COM, ''AV AYRTON SENNA'')
+              END) ENDERECO
+            ,''YES'' FORMA_PAGAMENTO
+            ,P.COD_CARGO_RH FUNCAO
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL2(DP.CEP_PROFESSOR, DP.COD_MUNICIPIO_FOPAG, ''3304557'')
+               ELSE
+                NVL2(DP.CEP_PROFESSOR_COM, DP.COD_MUNICIPIO_FOPAG, ''3304557'')
+              END) MUNICIPIO
+            ,DP.NOM_PROFESSOR NOME
+            ,(CASE
+               WHEN DP.IND_CORRESPONDENCIA = ''R'' THEN
+                NVL2(DP.CEP_PROFESSOR, DP.NUM_ENDERECO, ''2800'')
+               ELSE
+                NVL2(DP.CEP_PROFESSOR_COM, DP.NUM_ENDERECO_COMERCIAL, ''2800'')
+              END) NUMERO
+            ,DP.COD_PIS_PASEP_CI PREVIDENCIA_SOCIAL
+            ,''YES'' PAGAMENTO_BANCO
+            ,''U_PROF'' TIPO
+        FROM SIA.PROFESSOR       P
+            ,SIA.DADOS_PROFESSOR DP
+            ,SIA.BAIRRO          B
+       WHERE DP.NUM_SEQ_DADOS_PROFESSOR = P.NUM_SEQ_DADOS_PROFESSOR
+         AND NVL(DP.COD_BAIRRO, DP.COD_BAIRRO_COM) = B.COD_BAIRRO(+)
+         AND NVL(DP.COD_MUNICIPIO, DP.COD_MUNICIPIO_COM) = B.COD_MUNICIPIO(+)
+         AND (:PI_IND_TIPO_CONTRATO IS NULL OR P.IND_TIPO_CONTRATO = :PI_IND_TIPO_CONTRATO)
+    ';
+
+    -- BUSCA POR COMPETENCIA
+    IF PI_DT_COMPETENCIA IS NOT NULL
+    THEN
+      --
+      V_SQL := V_SQL || '
+         AND EXISTS(SELECT 1
+                      FROM SIA.INTERFACE_PAGAMENTO IP,
+                           SIA.CONTROLE_PAGAMENTO_PROFESSOR CP
+                     WHERE IP.COD_PROFESSOR = P.COD_PROFESSOR
+                       AND IP.DT_MES_ANO_COMPETENCIA = :PI_DT_COMPETENCIA
+                       AND IP.CICLO = CP.CICLO
+                       AND IP.DT_MES_ANO_COMPETENCIA = CP.DT_MES_ANO_COMPETENCIA
+                       AND IP.NOM_PROCESSO = CP.NOM_PROCESSO
+                       AND IP.COD_INSTITUICAO = CP.COD_INSTITUICAO
+                       AND CP.DT_EXPORTACAO_OK IS NOT NULL
+                       AND CP.COD_INSTITUICAO = :PI_COD_INSTITUICAO)';
+      --
+    ELSE
+      -- OU POR DATA DE ALTERACAO CADASTRAL ENTRE A DATA INFORMADA
+      --
+      V_SQL := V_SQL || '
+        AND TRUNC(P.DT_ATUALIZA_LOG) BETWEEN :PI_DT_ALT_CAD_INI AND :PI_DT_ALT_CAD_FIM
+        AND EXISTS(SELECT 1
+                     FROM SIA.PROFESSOR_REGIAO PR
+                     JOIN SIA.REGIAO R ON PR.COD_REGIAO = R.COD_REGIAO
+                     JOIN SIA.CAMPUS CA ON R.COD_REGIAO = CA.COD_CAMPUS
+                    WHERE PR.COD_PROFESSOR = P.COD_PROFESSOR
+                      AND CA.COD_INSTITUICAO = :PI_COD_INSTITUICAO)
+      ';
+      --
+    END IF;
+
+    --
+    BEGIN
+      --
+      BEGIN
+        --
+        PO_IND_ERRO    := '0';
+        PO_MSG_RETORNO := '';
+        --
+        IF PI_DT_COMPETENCIA IS NOT NULL
+        THEN
+          V_TXT_PARAMETROS := 'PI_DT_COMPETENCIA: ' || TO_CHAR(PI_DT_COMPETENCIA, 'DD/MM/YYYY');
+        ELSE
+          V_TXT_PARAMETROS := 'PI_DT_ALT_CAD_INI: ' || TO_CHAR(PI_DT_ALT_CAD_INI, 'DD/MM/YYYY') || ' AND PI_DT_ALT_CAD_FIM: ' || TO_CHAR(PI_DT_ALT_CAD_FIM, 'DD/MM/YYYY');
+        END IF;
+        --
+        V_POSICAO := 15;
+        --
+        BEGIN
+          --
+          SELECT 1
+            INTO V_ACHOU
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_EXPORTA_PROFESSOR';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            PO_MSG_RETORNO := 'O PROCESSO EXPORTA_PROFESSOR DEVE SER CADASTRO NA TABELA DE INTERFACE DE ARQUIVOS.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        V_POSICAO := 20;
+        --
+        IF PI_DT_COMPETENCIA IS NOT NULL
+        THEN
+          OPEN CURSOR_PROF FOR V_SQL
+            USING PI_IND_TIPO_CONTRATO, PI_IND_TIPO_CONTRATO, PI_DT_COMPETENCIA, PI_COD_INSTITUICAO;
+        ELSE
+          OPEN CURSOR_PROF FOR V_SQL
+            USING PI_IND_TIPO_CONTRATO, PI_IND_TIPO_CONTRATO, PI_DT_ALT_CAD_INI, PI_DT_ALT_CAD_FIM, PI_COD_INSTITUICAO;
+        END IF;
+        --
+        FETCH CURSOR_PROF
+          INTO R_PROF;
+        --
+        IF CURSOR_PROF%NOTFOUND
+        THEN
+          PO_MSG_RETORNO := 'NÃO FOI GERADO A INTERFACE DE PAGAMENTO PARA O PROCESSO EXPORTA_PROFESSOR.';
+          RAISE ERR_PREVISTO;
+        END IF;
+        --
+        V_POSICAO := 25;
+        --
+        BEGIN
+          --
+          SELECT CAMINHO_DESTINO_OK
+                ,NOM_ARQUIVO
+                ,EXTENSAO_ARQUIVO
+            INTO V_CAMINHO_DESTINO_OK
+                ,V_NOME_ARQ
+                ,V_EXT_ARQ
+            FROM SIA.INTERFACE_ARQUIVO
+           WHERE NOM_PROCESSO = 'PRO_EXPORTA_PROFESSOR';
+          --
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            V_ERRO_ORACLE  := SQLERRM;
+            PO_MSG_RETORNO := 'NÃO FOI ENCONTRADO O REGISTRO EXPORTA_PROFESSOR EM INTERFACE_ARQUIVO.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        BEGIN
+          SELECT LPAD(MA.COD_EMPRESA_RH, 2, '0')
+            INTO V_COD_EMPRESA_RH
+            FROM SIA.INSTITUICAO_ENSINO IE
+                ,SCS.MANTENEDORA        MA
+           WHERE IE.SGL_MANTENEDORA = MA.SGL_MANTENEDORA
+             AND IE.COD_INSTITUICAO = PI_COD_INSTITUICAO;
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            PO_MSG_RETORNO := 'COD_EMPRESA_RH NÃO ENCONTRADO PARA A INSTITUIÇÃO INFORMADA.';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        -- CRIA ARQUIVO
+        --
+        IF PI_DT_COMPETENCIA IS NOT NULL
+        THEN
+          /* AUTONOMO_EMPXX_MMYYYY.TXT */
+          V_NOME_ARQ := 'AUTONOMO_EMP' || V_COD_EMPRESA_RH || '_' || TO_CHAR(PI_DT_COMPETENCIA, 'MMYYYY') || '_' || PI_COD_INSTITUICAO || '.' || V_EXT_ARQ;
+        ELSE
+          V_NOME_ARQ := 'AUTONOMO_EMP' || V_COD_EMPRESA_RH || '_' || PI_COD_INSTITUICAO || '.' || V_EXT_ARQ;
+        END IF;
+        --
+        BEGIN
+          V_ARQ_RETORNO := SYS.UTL_FILE.FOPEN(V_CAMINHO_DESTINO_OK, V_NOME_ARQ, 'W');
+        EXCEPTION
+          WHEN SYS.UTL_FILE.INVALID_PATH THEN
+            PO_MSG_RETORNO := 'NÃO PODE CRIAR O ARQUIVO DE RETORNO: ' || V_NOME_ARQ || '. DIRETÓRIO ' || V_CAMINHO_DESTINO_OK || ' NÃO ENCONTRADO OU SEM PERMISSÃO.';
+            RAISE ERR_PREVISTO;
+          WHEN SYS.UTL_FILE.INVALID_OPERATION THEN
+            PO_MSG_RETORNO := 'ERRO NA CRIAÇÃO DO ARQUIVO (' || V_NOME_ARQ || ') NO DIRETÓRIO (' || V_CAMINHO_DESTINO_OK || '). CONFIRA O DIRETÓRIO !';
+            RAISE ERR_PREVISTO;
+        END;
+        --
+        V_POSICAO := 40;
+        --
+        WHILE CURSOR_PROF%FOUND
+        LOOP
+          --
+          V_POSICAO := 30;
+          --
+/*
+          V_NOM_PROFESSOR      := RPAD(NVL(RETIRA_CARACTER_ESPECIAL(R_PROF.NOME), ' '), 45);
+          V_ENDERECO_PROFESSOR := RPAD(NVL(RETIRA_CARACTER_ESPECIAL(R_PROF.ENDERECO), ' '), 35);
+          V_NOM_BAIRRO         := RPAD(NVL(RETIRA_CARACTER_ESPECIAL(R_PROF.NOM_BAIRRO), ' '), 20);
+          V_COD_AGENCIA        := LPAD(NVL(RETIRA_CARACTER_ESPECIAL(R_PROF.AGENCIA), '0'), 4, '0');
+          V_COD_BANCO          := LPAD(NVL(RETIRA_CARACTER_ESPECIAL(R_PROF.BANCO), '0'), 3, '0');
+          V_CEP                := LPAD(NVL(RETIRA_CARACTER_ESPECIAL(R_PROF.CEP), '0'), 8, '0');
+          --
+
+          IF R_PROF.AGENCIA <> '0000'
+          THEN
+            V_COD_AGENCIA := LPAD(REPLACE(V_COD_AGENCIA, ' ', ''), 4, '0');
+          END IF;
+          --
+          IF V_COD_BANCO <> '000'
+          THEN
+            V_COD_BANCO := LPAD(REPLACE(R_PROF.BANCO, 'X', '0'), 3, '0');
+          END IF;
+          --
+          IF R_PROF.CONTA IS NOT NULL
+          THEN
+            V_COD_CONTA := RPAD(' ', 15);
+          ELSE
+            V_COD_CONTA := RPAD(REPLACE(CONCAT(R_PROF.CONTA, R_PROF.DIGITO_CONTA), ' ', ''), 15);
+          END IF;
+          --
+          V_LINHA := V_COD_AGENCIA || ';' || V_NOM_BAIRRO  || ';' || V_COD_BANCO || ';' || LPAD(NVL(R_PROF.PAGTO_VIA_DOC, '0'), 3, '0') || ';' || V_CEP || ';' || RPAD(NVL(R_PROF.COMPLEMENTO, ' '), 21) || ';' || RPAD(NVL(V_COD_CONTA, ' '), 15) || ';' || LPAD(NVL(TO_CHAR(R_PROF.CPF), ' '), 11, '0') || ';' || RPAD(NVL(R_PROF.AGENCIA_DV, ' '), 2) || ';' ||
+                     RPAD(NVL(R_PROF.DIGITO_CONTA, ' '), 2) || ';' || R_PROF.DOMICILIADO_EXTERIOR || ';' || V_ENDERECO_PROFESSOR || ';' || R_PROF.FORMA_PAGAMENTO || ';' || LPAD(NVL(TO_CHAR(R_PROF.FUNCAO), '0'), 6, '0') || ';' || RPAD(NVL(TO_CHAR(R_PROF.MUNICIPIO), ' '), 7) || ';' || V_NOM_PROFESSOR || ';' ||
+                     RPAD(NVL(TO_CHAR(R_PROF.NUMERO), ' '), 5) || ';' || RPAD(NVL(TO_CHAR(R_PROF.PREVIDENCIA_SOCIAL), ' '), 11) || ';' || R_PROF.PAGAMENTO_BANCO;
+*/
+          --
+          /* RAPHAEL BARRENECHEA - PEOPLEWARE - SRD 379 - 21/09/2010 - INÍCIO */
+         /* ACRÉSCIMO DE DOIS CAMPOS NO ARQUIVO */
+         /* V_LINHA := R_PROF.AGENCIA || ';' || R_PROF.BAIRRO || ';' || R_PROF.BANCO || ';' || R_PROF.PAGTO_VIA_DOC || ';' || R_PROF.CEP || ';' || R_PROF.COMPLEMENTO || ';' || R_PROF.CONTA || ';' || R_PROF.CPF || ';' || R_PROF.AGENCIA_DV || ';' || R_PROF.DIGITO_CONTA || ';' || R_PROF.DOMICILIADO_EXTERIOR || ';' ||
+                     R_PROF.ENDERECO || ';' || R_PROF.FORMA_PAGAMENTO || ';' || R_PROF.FUNCAO || ';' || R_PROF.MUNICIPIO || ';' || R_PROF.NOME || ';' || R_PROF.NUMERO || ';' || R_PROF.PREVIDENCIA_SOCIAL || ';' || R_PROF.PAGAMENTO_BANCO || ';' || R_PROF.TIPO;
+          */
+             vCMP22 := '0588';
+             IF R_PROF.BANCO = '409' THEN
+                vCMP21 := '5';
+             ELSE
+                vCMP21 := '8';
+             END IF;
+
+           V_LINHA := R_PROF.AGENCIA || ';' || R_PROF.BAIRRO || ';' || R_PROF.BANCO || ';' || R_PROF.PAGTO_VIA_DOC || ';' || R_PROF.CEP || ';' || R_PROF.COMPLEMENTO || ';' || R_PROF.CONTA || ';' || R_PROF.CPF || ';' || R_PROF.AGENCIA_DV || ';' || R_PROF.DIGITO_CONTA || ';' || R_PROF.DOMICILIADO_EXTERIOR || ';' ||
+                     R_PROF.ENDERECO || ';' || R_PROF.FORMA_PAGAMENTO || ';' || R_PROF.FUNCAO || ';' || R_PROF.MUNICIPIO || ';' || R_PROF.NOME || ';' || R_PROF.NUMERO || ';' || R_PROF.PREVIDENCIA_SOCIAL || ';' || R_PROF.PAGAMENTO_BANCO || ';' || R_PROF.TIPO || ';' || vCMP21 || ';' || vCMP22;
+
+
+          /* RAPHAEL BARRENECHEA - PEOPLEWARE - SRD 379 - 21/09/2010 - FIM */
+          --
+          V_POSICAO := 110;
+          INCLUI_LINHA(V_LINHA);
+          FETCH CURSOR_PROF
+            INTO R_PROF;
+          --
+        END LOOP; -- WHILE CURSOR_PROF%FOUND LOOP
+        --
+        V_POSICAO := 130;
+        SYS.UTL_FILE.FCLOSE(V_ARQ_RETORNO);
+        --
+        SIA.GRAVA_ARQUIVO_BANCO(V_CAMINHO_DESTINO_OK, V_NOME_ARQ, 'TXT', V_NOME_ARQ, 4, 'PRO1-2-39', PO_MSG_RETORNO, PO_IND_ERRO);
+        --
+        V_POSICAO := 300;
+        --
+        IF PI_COMMIT = 'S'
+        THEN
+          COMMIT;
+        END IF;
+        --
+      EXCEPTION
+        WHEN ERR_ADVERTENCIA THEN
+          PO_IND_ERRO := '3';
+        WHEN ERR_PREVISTO THEN
+          PO_IND_ERRO := '1';
+          RAISE ERR_TRATA_ERRO;
+        WHEN ERR_NAO_PREVISTO THEN
+          PO_IND_ERRO := '2';
+          RAISE ERR_TRATA_ERRO;
+        WHEN OTHERS THEN
+          PO_MSG_RETORNO := SQLERRM || ' - ' || PI_IND_TIPO_CONTRATO || '-' || V_POSICAO || ' - ' || V_SQL || ' - ' || PI_DT_ALT_CAD_INI || ' - ' || PI_DT_ALT_CAD_FIM;
+          V_ERRO_ORACLE  := SQLERRM;
+          PO_IND_ERRO    := '2';
+          RAISE ERR_TRATA_ERRO;
+      END;
+      --
+    EXCEPTION
+      WHEN ERR_TRATA_ERRO THEN
+        --
+        IF PI_COMMIT = 'S'
+        THEN
+          ROLLBACK;
+        END IF;
+        --
+        IF PO_IND_ERRO = '2'
+        THEN
+          --
+          SEG.SEG_LOG_EXECUCAO('PRO_EXPORTA_PROFESSOR, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_ERRO_ORACLE, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+          --
+        END IF;
+        --
+    END;
+    --
+    IF CURSOR_PROF%ISOPEN
+    THEN
+      CLOSE CURSOR_PROF;
+    END IF;
+  END PRO_EXPORTA_PROFESSOR;
+  --
+  PROCEDURE PRO_INTERFACE_RATEIO(PI_DT_COMPETENCIA  IN DATE
+                                ,PI_NOM_PROCESSO    IN VARCHAR2
+                                ,PI_COMMIT          IN VARCHAR2
+                                ,PI_COD_INSTITUICAO IN NUMBER
+                                ,PO_IND_ERRO        OUT VARCHAR2
+                                ,PO_MSG_RETORNO     OUT VARCHAR2) IS
+    --
+    ERR_PREVISTO EXCEPTION;
+    --
+    V_POSICAO        PLS_INTEGER;
+    V_TXT_PARAMETROS VARCHAR2(4000);
+    V_SQLERRM        VARCHAR2(4000);
+    --
+    VQTD_LINHAS_INCLUIDAS NUMBER(10) := 0;
+    --
+    CURSOR C_AP IS
+      SELECT IP.NUM_SEQ_MOVIMENTO
+            ,IP.DT_MES_ANO_COMPETENCIA
+            ,IP.CICLO
+            ,IP.NOM_PROCESSO
+            ,IP.IND_SITUACAO_PAGAMENTO
+            ,IP.IND_DESTINO
+            ,IP.IND_CURSO_EXTENSAO
+            ,IP.COD_PROFESSOR
+            ,IP.NUM_MATRICULA
+            ,IP.COD_TIPO_CURSO
+            ,IP.COD_CURSO
+            ,IP.COD_CURSO_EXTENSAO
+            ,IP.COD_CAMPUS
+            ,IP.COD_TURNO
+            ,IP.COD_TIPO_RUBRICA
+            ,IP.QTD_HORAS_MOVIMENTO
+            ,IP.VALOR_MOVIMENTO
+            ,IP.DT_GERACAO
+            ,IP.DT_LIBERACAO
+            ,IP.DT_PROCESSAMENTO
+            ,IP.NUM_SEQ_SOLICITACAO
+            ,IP.NUM_SEQ_ALOCACAO
+            ,IP.NUM_SEQ_ATUACAO
+            ,IP.MES_ANO_ATUACAO
+            ,IP.NUM_SEQ_FALTA
+            ,IP.PERCENTUAL_APRIMORAMENTO
+            ,IP.COD_BANCO
+            ,IP.COD_AGENCIA
+            ,IP.COD_AGENCIA_DV
+            ,IP.COD_CONTA_CORRENTE
+            ,IP.COD_CONTA_CORRENTE_DV
+            ,IP.COD_CATEGORIA_PROFESSOR
+            ,IP.NUM_SEQ_TURMA
+            ,IP.COD_TURMA_EXTENSAO
+            ,IP.COD_VERBA_RH
+            ,IP.IND_TIPO_CONTRATO
+            ,IP.COD_CENTRO_RESULTADO
+            ,IP.COD_TIPO_ATUACAO
+            ,IP.QTD_HORAS_TRABALHADAS
+            ,T.IND_ENSINO_DISTANCIA
+        FROM SIA.CONTROLE_PAGAMENTO_PROFESSOR CPP
+            ,SIA.INTERFACE_PAGAMENTO          IP
+            ,SIA.TURMA                        T
+       WHERE CPP.DT_MES_ANO_COMPETENCIA BETWEEN TRUNC(PI_DT_COMPETENCIA) AND TRUNC(PI_DT_COMPETENCIA) + 1
+         AND CPP.DT_EXPORTACAO_OK IS NOT NULL -- CICLO VÁLIDO
+         AND CPP.NOM_PROCESSO = PI_NOM_PROCESSO -- CARGA HORARIA
+         AND IP.NOM_PROCESSO = CPP.NOM_PROCESSO
+         AND IP.DT_MES_ANO_COMPETENCIA = CPP.DT_MES_ANO_COMPETENCIA
+         AND IP.CICLO = CPP.CICLO
+         AND IP.COD_INSTITUICAO = CPP.COD_INSTITUICAO
+         AND IP.IND_CURSO_EXTENSAO <> 'S'
+         AND T.NUM_SEQ_TURMA = IP.NUM_SEQ_TURMA
+         AND CPP.COD_INSTITUICAO = PI_COD_INSTITUICAO
+       ORDER BY NUM_SEQ_MOVIMENTO;
+    --
+    R_AP C_AP%ROWTYPE;
+    --
+  BEGIN
+    --
+    PO_IND_ERRO    := '0';
+    PO_MSG_RETORNO := '';
+    --
+    -- 1. INICIALIZACAO
+    --
+    V_POSICAO := 10;
+    --
+    V_TXT_PARAMETROS := ' PI_DT_COMPETENCIA  : ' || PI_DT_COMPETENCIA || CHR(13) || ' PI_NOM_PROCESSO    : ' || PI_NOM_PROCESSO;
+    --
+    OPEN C_AP;
+    FETCH C_AP
+      INTO R_AP;
+    --
+    IF C_AP%NOTFOUND
+    THEN
+      PO_MSG_RETORNO := 'NENHUMA INFORMAÇÃO FOI ENCONTRADA PARA O PERÍODO ' || TO_CHAR(PI_DT_COMPETENCIA, 'MM/YYYY') || ' NO PROCESSO DE CARGA HORÁRIA. DO CICLO.';
+      RETURN;
+    END IF;
+    --
+    LOOP
+      --
+      -- 1.6. CARREGA AS LINHAS NO REGISTRO ANTERIOR (R_AP_ANT)
+      --
+      V_POSICAO := 16;
+      --
+      EXIT WHEN C_AP%NOTFOUND;
+      --
+      PRO_GERA_RATEIO(R_AP.CICLO, R_AP.DT_MES_ANO_COMPETENCIA, R_AP.NOM_PROCESSO, R_AP.NUM_SEQ_TURMA, R_AP.NUM_MATRICULA, R_AP.COD_TIPO_RUBRICA, R_AP.IND_CURSO_EXTENSAO, R_AP.IND_ENSINO_DISTANCIA, R_AP.COD_TIPO_ATUACAO, PI_COD_INSTITUICAO, PO_IND_ERRO, PO_MSG_RETORNO);
+      --
+      IF PO_IND_ERRO <> '0'
+      THEN
+        RAISE ERR_PREVISTO;
+      END IF;
+      --
+      VQTD_LINHAS_INCLUIDAS := VQTD_LINHAS_INCLUIDAS + 1;
+      --
+      IF PI_COMMIT = 'S' AND
+         MOD(VQTD_LINHAS_INCLUIDAS, 1000) = 0
+      THEN
+        COMMIT;
+      END IF;
+      --
+      FETCH C_AP
+        INTO R_AP;
+      --
+    END LOOP; -- LOOP
+    --
+  EXCEPTION
+    WHEN ERR_PREVISTO THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO AO LIMPAR TODAS AS LINHAS DAS TABELAS : ' || PO_MSG_RETORNO;
+        ELSE
+          PO_MSG_RETORNO := PO_MSG_RETORNO || ' - ERRO N O LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_INTERFACE_RATEIO, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+    WHEN OTHERS THEN
+      --
+      V_SQLERRM := SQLERRM;
+      --
+      PO_IND_ERRO := TO_CHAR(V_POSICAO * -1);
+      --
+      CASE PO_IND_ERRO
+        WHEN '-20' THEN
+          PO_MSG_RETORNO := 'ERRO NA BUSCAR DO C DIGO DA VERBA DO RH : ' || V_SQLERRM;
+        ELSE
+          PO_MSG_RETORNO := 'ERRO N O LISTADO : ' || V_SQLERRM;
+      END CASE;
+    --
+      SEG.SEG_LOG_EXECUCAO('SIA.PRO_PAGAMENTO_PROFESSOR.PRO_INTERFACE_RATEIO, IE: ' || PI_COD_INSTITUICAO, V_POSICAO, V_SQLERRM, V_TXT_PARAMETROS, PO_MSG_RETORNO);
+      --
+      IF PI_COMMIT = 'S'
+      THEN
+        ROLLBACK;
+      END IF;
+      --
+  END PRO_INTERFACE_RATEIO;
+  --
+BEGIN
+  BEGIN
+    SELECT SUBSTR(TXT_PARAMETRO, 1, 10)
+      INTO V_TXT_PARAM_VRB_ATE59
+      FROM SIA.PARAMETROS_PROFESSOR
+     WHERE COD_PARAMETRO = 7; -- VERBA DAS TURMAS VIRTUAIS COM CARGA TEÓRICA ATÉ 59 HORAS
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      NULL;
+  END;
+  BEGIN
+    SELECT SUBSTR(TXT_PARAMETRO, 1, 10)
+      INTO V_TXT_PARAM_VRB_ACIMA59
+      FROM SIA.PARAMETROS_PROFESSOR
+     WHERE COD_PARAMETRO = 17; -- VERBA DAS TURMAS VIRTUAIS COM CARGA TEÓRICA ACIMA DE 59 HORAS
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      NULL;
+  END;
+  --
+  BEGIN
+    SELECT SUBSTR(TXT_PARAMETRO, 1, 10)
+      INTO V_TXT_PARAMETRO_OI_PRESENCIAL
+      FROM SIA.PARAMETROS_PROFESSOR
+     WHERE COD_PARAMETRO = 8; -- ORDEM INTERNA PARA TURMAS PRESENCIAIS
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      NULL;
+  END;
+  --
+  BEGIN
+    SELECT SUBSTR(TXT_PARAMETRO, 1, 10)
+      INTO V_TXT_PARAMETRO_OI_VIRTUAL
+      FROM SIA.PARAMETROS_PROFESSOR
+     WHERE COD_PARAMETRO = 9; -- ORDEM INTERNA PARA TURMAS VIRTUAIS
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      NULL;
+  END;
+  --
+  BEGIN
+    SELECT SUBSTR(TXT_PARAMETRO, 1, 8)
+      INTO V_TXT_PARAMETRO_CR_APOIO
+      FROM SIA.PARAMETROS_PROFESSOR
+     WHERE COD_PARAMETRO = 10; -- CENTRO DE RESULTADO DE APOIO PARA ATUAÇÕES FIXAS
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      NULL;
+  END;
+  --
+  BEGIN
+    SELECT SUBSTR(TXT_PARAMETRO, 1, 8)
+      INTO V_TXT_PARAMETRO_CR_ESPECIALIZ
+      FROM SIA.PARAMETROS_PROFESSOR
+     WHERE COD_PARAMETRO = 16; -- CENTRO DE RESULTADO DA ESPECIALIZAÇÃO PARA ATUAÇÕES FIXAS
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      NULL;
+  END;
+  --
+
+END PRO_PAGAMENTO_PROFESSOR;
+/
+

@@ -1,0 +1,94 @@
+PROCEDURE SET_PAGAMENTO(PI_IND_TELEPRESENCIAL    IN VARCHAR2
+                        , PI_NUM_SEQ_ALOCACAO      IN NUMBER
+                        , PI_COD_DIA_SEMANA        IN VARCHAR2
+                        , PI_DT_AULA               IN DATE
+                        , PI_HH_INI_AULA           IN DATE
+                        , PI_HH_FIM_AULA           IN DATE
+                        , PI_VAL_HORA              IN NUMBER
+                        , PI_TABELA                    IN VARCHAR2
+                        , PI_COD_PROFESSOR             IN VARCHAR2
+                        , PI_NUM_MATRICULA             IN VARCHAR2
+                        , PI_DT_INI_ALOCACAO           IN DATE
+                        , PI_DT_FIM_ALOCACAO           IN DATE
+                        , PI_APRIMORAMENTO             IN NUMBER
+                        , PI_COD_CAMPUS                IN NUMBER
+                        , PI_COD_TIPO_CURSO            IN NUMBER
+                        , PI_COD_CURSO                 IN NUMBER
+                        , PI_COD_TURNO                 IN VARCHAR2
+                        , PI_ID_TURNO                  IN NUMBER
+                        , PI_COD_BANCO                 IN VARCHAR2
+                        , PI_COD_AGENCIA               IN VARCHAR2
+                        , PI_COD_AGENCIA_DV            IN VARCHAR2
+                        , PI_CONTA_CORRENTE            IN VARCHAR2
+                        , PI_CONTA_CORRENTE_DV         IN VARCHAR2
+                        , PI_COD_CATEGORIA_PROFESSOR   IN VARCHAR2
+                        , PI_NUM_SEQ_TURMA             IN VARCHAR2
+                        , PI_IND_TIPO_CONTRATO         IN VARCHAR2
+                        , PI_IND_PAGAMENTO             IN NUMBER DEFAULT NULL)
+
+  AS
+      I  NUMBER;
+      J  NUMBER;
+  BEGIN
+
+        T_ALOCACAO.EXTEND;
+        I             := T_ALOCACAO.COUNT;
+        T_ALOCACAO(I) := SIA.R_ALOCACAO(NULL, NULL, NULL, NULL
+                                       ,NULL, NULL);
+
+        T_ALOCACAO(I).IND_TELEPRESENCIAL   := PI_IND_TELEPRESENCIAL;
+        T_ALOCACAO(I).NUM_SEQ_ALOCACAO     := PI_NUM_SEQ_ALOCACAO;
+        T_ALOCACAO(I).COD_DIA_SEMANA       := PI_COD_DIA_SEMANA;
+        T_ALOCACAO(I).DT_AULA              := PI_DT_AULA;
+        T_ALOCACAO(I).HH_INI_AULA          := PI_HH_INI_AULA;
+        T_ALOCACAO(I).HH_FIM_AULA          := PI_HH_FIM_AULA;
+
+        --
+        IF NOT A_ALOCACAO.EXISTS(PI_NUM_SEQ_ALOCACAO) THEN
+           --
+           T_TURMA.EXTEND;
+           J          := T_TURMA.COUNT;
+           T_TURMA(J) := SIA.R_TURMA_PAGAMENTO(NULL, NULL, NULL, NULL, NULL
+                                              ,NULL, NULL, NULL, NULL, NULL
+                                              ,NULL, NULL, NULL, NULL, NULL
+                                              ,NULL, NULL, NULL, NULL, NULL
+                                              ,NULL, NULL, NULL, NULL, NULL
+                                              ,NULL, NULL);
+
+           A_ALOCACAO(PI_NUM_SEQ_ALOCACAO)    := J;
+
+           T_TURMA(J).TABELA                  := PI_TABELA;
+           T_TURMA(J).NUM_SEQ_ALOCACAO        := PI_NUM_SEQ_ALOCACAO;
+           T_TURMA(J).COD_PROFESSOR           := PI_COD_PROFESSOR;
+           T_TURMA(J).NUM_MATRICULA           := PI_NUM_MATRICULA;
+           T_TURMA(J).DT_INI_ALOCACAO         := PI_DT_INI_ALOCACAO;
+           T_TURMA(J).DT_FIM_ALOCACAO         := PI_DT_FIM_ALOCACAO;
+           T_TURMA(J).APRIMORAMENTO           := PI_APRIMORAMENTO;
+           T_TURMA(J).COD_CAMPUS              := PI_COD_CAMPUS;
+           T_TURMA(J).COD_TIPO_CURSO          := PI_COD_TIPO_CURSO;
+           T_TURMA(J).COD_CURSO               := PI_COD_CURSO;
+           T_TURMA(J).COD_TURNO               := PI_COD_TURNO;
+           T_TURMA(J).ID_TURNO                := PI_ID_TURNO;
+           T_TURMA(J).COD_BANCO               := PI_COD_BANCO;
+           T_TURMA(J).COD_AGENCIA             := PI_COD_AGENCIA;
+           T_TURMA(J).COD_AGENCIA_DV          := PI_COD_AGENCIA_DV;
+           T_TURMA(J).CONTA_CORRENTE          := PI_CONTA_CORRENTE;
+           T_TURMA(J).CONTA_CORRENTE_DV       := PI_CONTA_CORRENTE_DV;
+           T_TURMA(J).COD_CATEGORIA_PROFESSOR := PI_COD_CATEGORIA_PROFESSOR;
+           T_TURMA(J).NUM_SEQ_TURMA           := PI_NUM_SEQ_TURMA;
+           T_TURMA(J).HH_INI_AULA             := PI_HH_INI_AULA;
+           T_TURMA(J).HH_FIM_AULA             := PI_HH_FIM_AULA;
+           T_TURMA(J).IND_TIPO_CONTRATO       := PI_IND_TIPO_CONTRATO;
+           T_TURMA(J).VAL_HORA_AULA           := PI_VAL_HORA;
+           T_TURMA(J).IND_TELEPRESENCIAL      := PI_IND_TELEPRESENCIAL;
+           T_TURMA(J).QTD_DIA_TRABALHADO      := 1;
+           T_TURMA(J).IND_PAGAMENTO           := PI_IND_PAGAMENTO;
+           --
+        ELSE
+           --
+            J  := A_ALOCACAO(PI_NUM_SEQ_ALOCACAO);
+            T_TURMA(J).QTD_DIA_TRABALHADO := T_TURMA(J).QTD_DIA_TRABALHADO + 1;
+           --
+        END IF;
+
+  END SET_PAGAMENTO;
